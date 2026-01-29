@@ -44,11 +44,12 @@
             border border-transparent rounded-lg focus:outline-none action-btn" disabled>
                 Like a post
             </button>
-            <button id="book-call-action-btn" class="block w-full py-2 text-xs font-medium leading-2 
+            {{-- Commented out - Book a call will be built as a standalone feature --}}
+            {{-- <button id="book-call-action-btn" class="block w-full py-2 text-xs font-medium leading-2 
             text-white transition-all duration-150 bg-gray-400 mb-3
             border border-transparent rounded-lg focus:outline-none action-btn" disabled>
                 Book a call
-            </button>
+            </button> --}}
         </div>
     </div> 
     <div class="w-full bg-gray-100 rounded min-h-screen">
@@ -233,7 +234,8 @@
                         </div>
                     </div>
 
-                    <!-- Book a call -->
+                    {{-- Commented out - Book a call will be built as a standalone feature --}}
+                    {{-- <!-- Book a call -->
                     <div id="book-call-fields" class="custom-sequence-fields" style="display: none;">
                         <div class="flex gap-2">
                             <div class="">
@@ -315,7 +317,7 @@
                             
                             <textarea id="call-message" name="call_message" rows="6" class="text-xs block w-full rounded-md border-0 px-2 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-[#0077b5] sm:text-sm sm:leading-6" placeholder="Enter your call message here..."></textarea>
                         </div>
-                    </div>
+                    </div> --}}
                 </div>
                 <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t border-gray-200">
                     <button type="button" id="close-apply-action-main" class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-hidden focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none" data-hs-overlay="#hs-custom-modal">
@@ -358,7 +360,8 @@ let dbSequenceNode = @json($dbSequenceNode);
 let dbSequenceLink = @json($dbSequenceLink);
 let nodeDataModel, linkDataModel;
 
-const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company."
+{{-- Commented out - Book a call will be built as a standalone feature --}}
+{{-- const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company." --}}
 
 const sendInviteNodes = [
     {key: 0, icon: "\uf007", label: "Send an invite",   type: 'action', value: 'send-invites',  color: "#5560E5", stroke: "white",  loc: "0 0", pos: 'center', hasInviteNote: true, message: "Hey @firstName,\ni will like to join your network.", runStatus: false},
@@ -388,6 +391,7 @@ const followNodes = [
 const messageNodes = [
     {key: 0, icon: "\uf27a", label: "Message",  type: 'action', value: 'message',       color: "#5560E5", stroke: "white",  loc: "50 0", message: '', pos: 'center', runStatus: false},
     {key: 1, icon: "\uf017", label: "1 day",    type: 'delay',  value: 1, time: 'days', color: "#F3F4F6", stroke: "black",  loc: "50 60", pos: 'center', runStatus: false},
+    {key: 2, icon: "\uf05e", label: "End of sequence", type: 'end', value: 'end', color: "#9ca3af", stroke: "white", loc: "50 120", pos: 'center', runStatus: false},
 ]
 const endorseNodes = [
     {key: 0, icon: "\uf058", label: "Endorse skills", type: 'action', value: 'endorse',       color: "#5560E5", stroke: "white",  loc: "50 0", totalSkills: 1, pos: 'center', runStatus: false},
@@ -402,10 +406,11 @@ const addActionNodes = [
     {key: 2, icon: "",  label: "Add action", type: 'action',  value: 'add-action', color: "#FFFFFF", stroke: "black",  loc: "150 0",  pos: 'right'},
     {key: 3, icon: "",  label: "End",        type: 'action',  value: 'end',        color: "#FFFFFF", stroke: "black",  loc: "215 0",  pos: 'right'},
 ]
-const bookCallNodes = [
+{{-- Commented out - Book a call will be built as a standalone feature --}}
+{{-- const bookCallNodes = [
     {key: 0, icon: "\uf133", label: "Book a call",  type: 'action', value: 'call',      color: "#5560E5", stroke: "white",  loc: "50 0", message: callMessage, pos: 'center', runStatus: false},
     {key: 1, icon: "\uf017", label: "1 day",    type: 'delay',  value: 1, time: 'days', color: "#F3F4F6", stroke: "black",  loc: "50 60", pos: 'center', runStatus: false},
-]
+] --}}
 
 if(dbSequenceType === 'custom' && dbSequenceNode.length > 0 && dbSequenceLink.length > 0){
     nodeDataModel = dbSequenceNode
@@ -440,7 +445,8 @@ let sendInviteActionBtn = document.querySelector('#send-invite-action-btn'),
     endorseActionBtn = document.querySelector('#endorse-action-btn'),
     followActionBtn = document.querySelector('#follow-action-btn'),
     likePostActionBtn = document.querySelector('#like-post-action-btn'),
-    bookCallActionBtn = document.querySelector('#book-call-action-btn'),
+    {{-- Commented out - Book a call will be built as a standalone feature --}}
+    {{-- bookCallActionBtn = document.querySelector('#book-call-action-btn'), --}}
     applyActionMain = document.querySelector('#apply-action-main'),
     closeApplyActionMain = document.querySelector('#close-apply-action-main');
 
@@ -459,10 +465,11 @@ let sendMessageFields = document.querySelector('#send-message-fields'),
 let endorseSkillFields = document.querySelector('#endorse-fields'),
     totalEndorseSkill = document.querySelector('#total-endorse-skill');
 
-let callMessageSpace = document.querySelector('.call-message-space'),
+{{-- Commented out - Book a call will be built as a standalone feature --}}
+{{-- let callMessageSpace = document.querySelector('.call-message-space'),
     callMessageTextField = document.querySelector('#call-message'),
-    callFields = document.querySelector('#book-call-fields'),
-    reviewTimeContainer = document.querySelector('#review-time-container'),
+    callFields = document.querySelector('#book-call-fields'), --}}
+let reviewTimeContainer = document.querySelector('#review-time-container'),
     reviewTimeInput = document.querySelector('#review-time');
 
 let modalTitle = document.querySelector('.modal-title')
@@ -548,7 +555,7 @@ const init = () => {
 
                 modalTitle.innerHTML = 'Message'
 
-                toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+                toogleDisableActionSide([0,1,2,3,4,5], 'disable')
             }else if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'endorse'){
                 document.querySelector('.custom-modal-btn').click()
 
@@ -566,18 +573,20 @@ const init = () => {
                     if(nodeDataModel[nodeIndex].pos == 'left') {
                         toogleDisableActionSide([2,4,5], 'enable')
                     }else if(nodeDataModel[nodeIndex].pos == 'right'){
-                        toogleDisableActionSide([1,2,3,4,5,6], 'enable')
+                        toogleDisableActionSide([1,2,3,4,5], 'enable')
                     }
                 }else{
                     if(nodeDataModel[0].value == 'message'){
-                        toogleDisableActionSide([1,2,3,4,5,6], 'enable')
+                        toogleDisableActionSide([1,2,3,4,5], 'enable')
                     }else{
                         toogleDisableActionSide([1,2,3,4,5], 'enable')
                     }
                 }
             }else if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].label == 'End'){
                 setEndSequence()
-            }else if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'call'){
+            }
+            {{-- Commented out - Book a call will be built as a standalone feature --}}
+            {{-- else if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'call'){
                 document.querySelector('.custom-modal-btn').click()
 
                 callMessageTextField.value = nodeDataModel[nodeIndex].message
@@ -603,8 +612,8 @@ const init = () => {
                 callFields.style.display = 'block'
                 modalTitle.innerHTML = 'Book a Call'
 
-                toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
-            }
+                toogleDisableActionSide([0,1,2,3,4,5], 'disable')
+            } --}}
         })
         // setAddActionNodes()
         setNodeLinkArray()
@@ -635,7 +644,8 @@ const init = () => {
     })
 
     applyActionMain.addEventListener('click', () => {
-        if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'call'){
+        {{-- Commented out - Book a call will be built as a standalone feature --}}
+        {{-- if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'call'){
             nodeDataModel[nodeIndex].message = callMessageTextField.value
             nodeDataModel[nodeIndex].paraphrase_user_message = document.querySelector('#use-ai-paraphrase').checked
             
@@ -660,7 +670,7 @@ const init = () => {
             
             callMessageSpace.style.display = 'none'
             callFields.style.display = 'none'
-        }else if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'send-invites'){
+        }else --}}if(nodeDataModel[nodeIndex].type == 'action' && nodeDataModel[nodeIndex].value == 'send-invites'){
             nodeDataModel[nodeIndex].message = inviteMessage.value
             nodeDataModel[nodeIndex].hasInviteNote = inviteMessage.disabled
             inviteMessageFields.style.display = 'none'
@@ -716,7 +726,7 @@ const init = () => {
             nodeDataModel = sendInviteNodes
             linkDataModel = sendInviteLinks
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
@@ -740,7 +750,7 @@ const init = () => {
 
                 for(const [i, item] of messageNodes.entries()){
                     newNode = {
-                        key: i == 0 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
+                        key: i == 0 ? lastNodekeys['lastKey']+1 : i == 1 ? lastNodekeys['lastKey']+2 : lastNodekeys['lastKey']+3,
                         icon: item.icon,
                         label: item.label,
                         type: item.type,
@@ -749,7 +759,7 @@ const init = () => {
                         color: item.color,
                         stroke: item.stroke,
                         message: item?.message || null,
-                        loc: i == 0 ? `150 ${loc}` : `150 ${loc + 60}`,
+                        loc: i == 0 ? `150 ${loc}` : i == 1 ? `150 ${loc + 60}` : `150 ${loc + 120}`,
                         pos: 'right', 
                         runStatus: false
                     }
@@ -764,8 +774,8 @@ const init = () => {
                     nodeDataModel.push(newNode)
 
                     linkDataModel.push({
-                        from: i == 0 ? lastNodekeys['rightKey'] : lastNodekeys['lastKey']+1,
-                        to: i == 0 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
+                        from: i == 0 ? lastNodekeys['rightKey'] : i == 1 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
+                        to: i == 0 ? lastNodekeys['lastKey']+1 : i == 1 ? lastNodekeys['lastKey']+2 : lastNodekeys['lastKey']+3,
                         fromSpot: "Bottom",
                         toSpot: "Top"
                     })
@@ -777,6 +787,12 @@ const init = () => {
             linkDataModel.push({
                 from: 0,
                 to: 1,
+                fromSpot: "Bottom",
+                toSpot: "Top"
+            })
+            linkDataModel.push({
+                from: 1,
+                to: 2,
                 fromSpot: "Bottom",
                 toSpot: "Top"
             })
@@ -834,8 +850,32 @@ const init = () => {
                 toSpot: "Top"
             }
             linkDataModel.push(newLink1)
+            
+            // Add end node after delay
+            let newNode2 = {
+                key: lastNodekeys.lastKey +3,
+                icon: messageNodes[2].icon,
+                label: messageNodes[2].label,
+                type: messageNodes[2].type,
+                value: messageNodes[2].value,
+                time: messageNodes[2]?.time || null,
+                color: messageNodes[2].color,
+                stroke: messageNodes[2].stroke,
+                message: messageNodes[2]?.message || null,
+                loc: `50 ${loc +120}`,
+                pos: 'center',
+                runStatus: false
+            }
+            nodeDataModel.push(newNode2)
+            let newLink2 = {
+                from: lastNodekeys.centerKey +2,
+                to: lastNodekeys.lastKey +3,
+                fromSpot: "Bottom",
+                toSpot: "Top"
+            }
+            linkDataModel.push(newLink2)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
@@ -991,7 +1031,7 @@ const init = () => {
             }
             linkDataModel.push(newLink1)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
@@ -1108,7 +1148,7 @@ const init = () => {
             }
             linkDataModel.push(newLink1)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
@@ -1262,7 +1302,7 @@ const init = () => {
             }
             linkDataModel.push(newLink1)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
@@ -1416,15 +1456,16 @@ const init = () => {
             }
             linkDataModel.push(newLink1)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     })
 
     /**
      * Create book a call nodes and link
+     * Commented out - Book a call will be built as a standalone feature
      */
-    bookCallActionBtn.addEventListener('click', () => {
+    {{-- bookCallActionBtn.addEventListener('click', () => {
         ensureLinkDataModel() // Ensure linkDataModel is initialized
         let messageLinks, newNode;
 
@@ -1532,10 +1573,10 @@ const init = () => {
             linkDataModel.push(newLink1)
         }
 
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
-    })
+    }) --}}
 
     /**
      * Set add action|end nodes and links
@@ -1771,7 +1812,7 @@ const init = () => {
             }
             linkDataModel.push(endLink0)
         }
-        toogleDisableActionSide([0,1,2,3,4,5,6], 'disable')
+        toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()
         setNodeLinkArray()
     }
@@ -2026,12 +2067,14 @@ const addVariableToMessage = mv => {
         textBefore = sendMessage.value.substring(0,  cursorPos)
         textAfter  = sendMessage.value.substring(cursorPos, sendMessage.value.length)
         sendMessage.value = textBefore + mv + textAfter
-    }else if(nodeDataModel[nodeKey].value == 'call'){
+    }
+    {{-- Commented out - Book a call will be built as a standalone feature --}}
+    {{-- else if(nodeDataModel[nodeKey].value == 'call'){
         cursorPos = callMessageTextField.selectionStart
         textBefore = callMessageTextField.value.substring(0,  cursorPos)
         textAfter  = callMessageTextField.value.substring(cursorPos, callMessageTextField.value.length)
         callMessageTextField.value = textBefore + mv + textAfter
-    }
+    } --}}
 }
 
 const saveSequence = async () => {

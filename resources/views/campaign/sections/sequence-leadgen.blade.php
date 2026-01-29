@@ -197,7 +197,8 @@
                         </div>
                     </div>
 
-                    <!-- Book a call -->
+                    {{-- Commented out - Book a call will be built as a standalone feature --}}
+                    {{-- <!-- Book a call -->
                     <div id="book-call-fields" class="leadgen-sequence-fields" style="display: none;">
                         <div class="flex gap-2">
                             <div class="">
@@ -282,7 +283,7 @@
                             
                             <textarea id="call-message" name="call_message" rows="6" class="text-xs block w-full rounded-md border-0 px-2 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-[#0077b5] sm:text-sm sm:leading-6" placeholder="Enter your call message here..."></textarea>
                         </div>
-                    </div>
+                    </div> --}}
 
                 </div>
                 <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t border-gray-200">
@@ -327,7 +328,8 @@ let dbSequenceNode = @json($dbSequenceNode);
 let dbSequenceLink = @json($dbSequenceLink);
 let nodeDataModel, linkDataModel;
 
-const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company."
+{{-- Commented out - Book a call will be built as a standalone feature --}}
+{{-- const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company." --}}
 
 if(dbSequenceType === 'lead_gen' && dbSequenceNode.length > 0 && dbSequenceLink.length > 0){
     nodeDataModel = dbSequenceNode
@@ -352,9 +354,11 @@ if(dbSequenceType === 'lead_gen' && dbSequenceNode.length > 0 && dbSequenceLink.
         {key: 15, icon: "\uf05e", label: "Still not accepted", type: 'condition', value: 'not accepted',color: "#9ca3af", stroke: "white",  loc: "-150 560",runStatus: false},
         {key: 16, icon: "\uf017", label: "4 days",          type: 'delay',  value: 4, time: 'days', color: "#F3F4F6", stroke: "black",  loc: "150 560",     runStatus: false, acceptedTime: 4},
         {key: 17, icon: "\uf05e", label: "End of sequence", type: 'end',    value: 'end',           color: "#9ca3af", stroke: "white",  loc: "-150 630",    runStatus: false},
-        {key: 18, icon: "\uf133", label: "Book a call",     type: 'action', value: 'call',          color: "#5A68F7", stroke: "white",  loc: "150 630", message: callMessage, runStatus: false, acceptedAction: 4},
+        {{-- Commented out - Book a call will be built as a standalone feature --}}
+        {{-- {key: 18, icon: "\uf133", label: "Book a call",     type: 'action', value: 'call',          color: "#5A68F7", stroke: "white",  loc: "150 630", message: callMessage, runStatus: false, acceptedAction: 4},
         {key: 19, icon: "\uf017", label: "1 days",          type: 'delay',  value: 1, time: 'days', color: "#F3F4F6", stroke: "black",  loc: "150 700",     runStatus: false},
-        {key: 20, icon: "\uf05e", label: "End of sequence", type: 'end',    value: 'end',           color: "#9ca3af", stroke: "white",  loc: "150 770",     runStatus: false},
+        {key: 20, icon: "\uf05e", label: "End of sequence", type: 'end',    value: 'end',           color: "#9ca3af", stroke: "white",  loc: "150 770",     runStatus: false}, --}}
+        {key: 18, icon: "\uf05e", label: "End of sequence", type: 'end',    value: 'end',           color: "#9ca3af", stroke: "white",  loc: "150 630",     runStatus: false},
     ]
     linkDataModel = [
         {from: 0, to: 1, fromSpot: "Left", toSpot: "Top"},
@@ -375,8 +379,10 @@ if(dbSequenceType === 'lead_gen' && dbSequenceNode.length > 0 && dbSequenceLink.
         {from: 14, to: 16, fromSpot: "Bottom", toSpot: "Top"},
         {from: 15, to: 17, fromSpot: "Bottom", toSpot: "Top"},
         {from: 16, to: 18, fromSpot: "Bottom", toSpot: "Top"},
+        {{-- Commented out - Book a call will be built as a standalone feature --}}
+        {{-- {from: 16, to: 18, fromSpot: "Bottom", toSpot: "Top"},
         {from: 18, to: 19, fromSpot: "Bottom", toSpot: "Top"},
-        {from: 19, to: 20, fromSpot: "Bottom", toSpot: "Top"},
+        {from: 19, to: 20, fromSpot: "Bottom", toSpot: "Top"}, --}}
     ]
 }
 
@@ -395,10 +401,11 @@ let inviteNote = document.querySelector('#invite-note'),
     sendMessage = document.querySelector('#send-message'),
     totalEndorseSkill = document.querySelector('#total-endorse-skill')
 
-let callMessageSpace = document.querySelector('.call-message-space'),
+{{-- Commented out - Book a call will be built as a standalone feature --}}
+{{-- let callMessageSpace = document.querySelector('.call-message-space'),
     callMessageTextField = document.querySelector('#call-message'),
-    callFields = document.querySelector('#book-call-fields'),
-    reviewTimeContainer = document.querySelector('#review-time-container'),
+    callFields = document.querySelector('#book-call-fields'), --}}
+let reviewTimeContainer = document.querySelector('#review-time-container'),
     reviewTimeInput = document.querySelector('#review-time');
 
 let applyActionMain = document.querySelector('#apply-action-main'),
@@ -484,7 +491,9 @@ const initLeadGen = () => {
                 // applyActionBtn.style.display = 'block'
 
                 modalTitle.innerHTML = 'Endorse'
-            }else if(nodeItem.type == 'action' && nodeItem.value == 'call'){
+            }
+            {{-- Commented out - Book a call will be built as a standalone feature --}}
+            {{-- else if(nodeItem.type == 'action' && nodeItem.value == 'call'){
                 document.querySelector('.lead-gen-modal-btn').click()
 
                 callMessageTextField.value = nodeDataModel[nodeKey].message
@@ -509,7 +518,7 @@ const initLeadGen = () => {
                 callMessageSpace.style.display = 'block'
                 callFields.style.display = 'block'
                 modalTitle.innerHTML = 'Book a Call'
-            }
+            } --}}
         })
         setNodeLinkArray()
     }
@@ -554,7 +563,9 @@ const initLeadGen = () => {
         }else if(nodeItem.type == 'action' && nodeItem.value == 'endorse'){
             nodeDataModel[nodeKey].totalSkills = totalEndorseSkill.value
             endorseSkillFields.style.display = 'none'
-        }else if(nodeItem.type == 'action' && nodeItem.value == 'call'){
+        }
+        {{-- Commented out - Book a call will be built as a standalone feature --}}
+        {{-- else if(nodeItem.type == 'action' && nodeItem.value == 'call'){
             nodeDataModel[nodeKey].message = callMessageTextField.value
             nodeDataModel[nodeKey].paraphrase_user_message = document.querySelector('#use-ai-paraphrase').checked
             
@@ -579,7 +590,7 @@ const initLeadGen = () => {
             
             callMessageSpace.style.display = 'none'
             callFields.style.display = 'none'
-        }
+        } --}}
         setNodeLinkArray()
         closeApplyActionMain.click()
     })
@@ -671,12 +682,14 @@ const addVariableToMessage = (mv) => {
         textBefore = sendMessage.value.substring(0,  cursorPos)
         textAfter  = sendMessage.value.substring(cursorPos, sendMessage.value.length)
         sendMessage.value = textBefore + mv + textAfter
-    }else if(nodeItem.value == 'call'){
+    }
+    {{-- Commented out - Book a call will be built as a standalone feature --}}
+    {{-- else if(nodeItem.value == 'call'){
         cursorPos = callMessageTextField.selectionStart
         textBefore = callMessageTextField.value.substring(0,  cursorPos)
         textAfter = callMessageTextField.value.substring(cursorPos, callMessageTextField.value.length)
         callMessageTextField.value = textBefore + mv + textAfter
-    }
+    } --}}
 }
 
 /**
