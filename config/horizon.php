@@ -219,10 +219,23 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
                 'connection' => 'redis',
-                'queue'      => ['default', 'phantombuster'],
+                'queue'      => ['default'],
                 'balance'    => 'auto',
                 'processes'  => 10,     // ← start with 5–10 workers, increase later
                 'tries'      => 3,
+            ],
+            'supervisor-phantombuster' => [
+                'maxProcesses' => 10,    // Allow up to 10 workers for better concurrency
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+                'connection' => 'redis',
+                'queue'      => ['phantombuster'],
+                'balance'    => 'auto',
+                'processes'  => 5,      // 5 workers to handle multiple users concurrently
+                                        // Lock mechanism ensures only 1 PhantomBuster call at a time
+                                        // Multiple workers process queue faster while respecting rate limit
+                'tries'      => 1,      // No retries - fail fast to prevent rate limit issues
+                'timeout'    => 600,     // 10 minutes timeout for PhantomBuster operations
             ],
         ],
 

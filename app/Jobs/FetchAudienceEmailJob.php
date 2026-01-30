@@ -31,6 +31,12 @@ class FetchAudienceEmailJob implements ShouldQueue
     public $maxExceptions = 1;
 
     /**
+     * The number of seconds to wait before retrying the job.
+     * Set to null to prevent retries completely.
+     */
+    public $backoff = null;
+
+    /**
      * The number of seconds the job can run before timing out (8 minutes)
      * This is slightly longer than PhantomBuster's maxWaitSeconds (5 minutes)
      */
@@ -62,6 +68,20 @@ class FetchAudienceEmailJob implements ShouldQueue
     public function tries(): int
     {
         return 1; // No retries - fail fast
+    }
+
+    /**
+     * Handle a job failure.
+     * This prevents the job from being retried even if Horizon has tries > 1
+     */
+    public function failed(\Throwable $exception): void
+    {
+        // Job has already been marked as failed, just log it
+        Log::error('FetchAudienceEmailJob: Job failed permanently', [
+            'audience_list_id' => $this->audienceListItemId,
+            'public_identifier' => $this->publicIdentifier,
+            'error' => $exception->getMessage()
+        ]);
     }
 
     /**
@@ -284,8 +304,9 @@ class FetchAudienceEmailJob implements ShouldQueue
                 }
             }
             
-            // Don't re-throw - let job complete and move to next
-            // Since tries=1, this job won't retry anyway
+            // Don't re-throw exception - just return to complete job
+            // The separate phantombuster supervisor has tries=1, so it won't retry
+            // If exception escapes, it will be caught by Laravel's exception handler
             return;
         }
     }
