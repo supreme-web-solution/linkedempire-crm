@@ -1,5 +1,11 @@
-@extends('layout.auth')
-
+@extends('layout.auth') 
+@seo([
+        'title' => 'Social Accounts - ' . config('app.name'),
+        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+        'image' => asset('images/site-image.png'),
+        'site_name' => config('app.name'),
+        'favicon' => asset('images/logo-1.png'),
+    ])
 @section('content')
 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>

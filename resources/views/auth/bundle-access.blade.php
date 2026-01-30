@@ -1,5 +1,11 @@
 @extends('layout.guest')
-
+@seo([
+        'title' => 'Bundle Access Signup - ' . config('app.name'),
+        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+        'image' => asset('images/site-image.png'),
+        'site_name' => config('app.name'),
+        'favicon' => asset('images/logo-1.png'),
+    ])
 @section('content')
 <div class="mt-7 bg-white border border-gray-200 rounded-xl shadow-2xs">
     <div class="p-4 sm:p-7">

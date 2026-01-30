@@ -1,5 +1,11 @@
 @extends('layout.auth')
-
+@seo([
+        'title' => 'Profile - ' . config('app.name'),
+        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+        'image' => asset('images/site-image.png'),
+        'site_name' => config('app.name'),
+        'favicon' => asset('images/logo-1.png'),
+    ])
 @section('content')
 <div>
     <h2 class="text-2xl font-semibold text-gray-900">

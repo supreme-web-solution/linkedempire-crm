@@ -1,12 +1,21 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
+    <x-seo::meta />
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>{{config('app.name')}}</title>
     {{-- <link rel="shortcut icon" href="{{ asset('images/linkdominator-48.png') }}" type="image/png" /> --}}
-    <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" />
+    {{-- <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" /> --}}
+
+    @seo([
+        'title' => config('app.name'),
+        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+        'image' => asset('images/site-image.png'),
+        'site_name' => config('app.name'),
+        'favicon' => asset('images/logo-1.png'),
+    ])
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -132,22 +141,32 @@
             margin: 0 auto;
         }
         
-        /* Show full logo when expanded, hide collapsed logo */
-        .sidebar-logo .logo-full {
+        /* Default: Hide collapsed logo everywhere by default - STRONG RULE */
+        img.logo-collapsed {
+            display: none !important;
+        }
+        
+        /* Default: Show full logo everywhere */
+        img.logo-full {
             display: block;
         }
         
-        .sidebar-logo .logo-collapsed {
-            display: none;
-        }
-        
-        /* Show collapsed logo when sidebar is collapsed, hide full logo */
-        .sidebar-collapsed .sidebar-logo .logo-full {
-            display: none;
-        }
-        
-        .sidebar-collapsed .sidebar-logo .logo-collapsed {
+        /* Only in sidebar: Show full logo when expanded */
+        .sidebar-logo img.logo-full {
             display: block;
+        }
+        
+        .sidebar-logo img.logo-collapsed {
+            display: none !important;
+        }
+        
+        /* Only in collapsed sidebar: Show collapsed logo, hide full logo */
+        .sidebar-collapsed .sidebar-logo img.logo-full {
+            display: none !important;
+        }
+        
+        .sidebar-collapsed .sidebar-logo img.logo-collapsed {
+            display: block !important;
         }
         
         .sidebar-collapsed .sidebar-logo svg,

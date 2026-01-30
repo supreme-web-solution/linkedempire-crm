@@ -1,13 +1,19 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
+    <x-seo::meta />
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>{{config('app.name')}}</title>
-    <meta name="description" content="LinkedIn Lead Generation And Sales Automation Tool"> 
     <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" />
-    {{-- <link rel="shortcut icon" href="{{ asset('images/linkdominator-48.png') }}" type="image/png" /> --}}
+    @seo([
+        'title' => config('app.name'),
+        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+        'image' => asset('images/site-image.png'),
+        'site_name' => config('app.name'),
+        'favicon' => asset('images/logo-1.png'),
+    ])
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -20,6 +26,15 @@
     <style type="text/css">
         .notify{
             z-index: 1001 !important;
+        }
+        
+        /* Hide collapsed logo on guest pages - only show full logo - STRONG RULE */
+        img.logo-collapsed {
+            display: none !important;
+        }
+        
+        img.logo-full {
+            display: block;
         }
     </style>
 </head>
