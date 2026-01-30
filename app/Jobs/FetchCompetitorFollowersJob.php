@@ -114,31 +114,69 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 ]);
             }
 
-            foreach ($followers as $follower) {
+            Log::info('💾 FetchCompetitorFollowersJob: Starting to store followers', [
+                'audience_id' => $audience->audience_id,
+                'total_followers_to_store' => count($followers),
+                'sample_follower' => !empty($followers) ? array_slice($followers, 0, 1) : []
+            ]);
+            
+            foreach ($followers as $index => $follower) {
                 // Skip if not an array (safety check)
                 if (!is_array($follower)) {
-                    Log::warning('FetchCompetitorFollowersJob: Skipping non-array follower', [
+                    Log::warning('⚠️ FetchCompetitorFollowersJob: Skipping non-array follower', [
+                        'index' => $index,
                         'type' => gettype($follower),
                         'value' => is_string($follower) ? substr($follower, 0, 100) : $follower
                     ]);
                     continue;
                 }
                 
+                if ($index < 3) {
+                    Log::info('📝 FetchCompetitorFollowersJob: Processing follower', [
+                        'index' => $index,
+                        'follower_keys' => array_keys($follower),
+                        'follower_data' => $follower
+                    ]);
+                }
+                
                 $this->storeFollower($audience, $follower, $uniqueByPublicId, $created);
             }
 
-            Log::info('FetchCompetitorFollowersJob: PhantomBuster followers stored', [
+            Log::info('✅ FetchCompetitorFollowersJob: PhantomBuster followers stored', [
                 'audience_id' => $audience->audience_id,
                 'stored' => $created,
-                'total_fetched' => count($followers)
+                'total_fetched' => count($followers),
+                'unique_by_public_id' => count($uniqueByPublicId)
             ]);
         } catch (\Exception $e) {
-            Log::error('FetchCompetitorFollowersJob: PhantomBuster failed', [
+            Log::error('❌ FetchCompetitorFollowersJob: PhantomBuster failed', [
                 'audience_id' => $audience->audience_id,
                 'company_url' => $this->companyUrl,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            
+            // Check if it's a session/cookie error
+            $isSessionError = stripos($e->getMessage(), 'session cookie') !== false || 
+                             stripos($e->getMessage(), 'li_at') !== false ||
+                             stripos($e->getMessage(), 'credentials') !== false ||
+                             stripos($e->getMessage(), 'expired') !== false;
+            
+            if ($isSessionError) {
+                // Store error message in audience source_meta for UI display
+                $meta = json_decode($audience->source_meta, true) ?? [];
+                $meta['last_error'] = $e->getMessage();
+                $meta['last_error_type'] = 'session_cookie';
+                $meta['last_error_at'] = now()->toIso8601String();
+                $audience->source_meta = json_encode($meta);
+                $audience->save();
+                
+                Log::info('💾 FetchCompetitorFollowersJob: Stored session error in audience', [
+                    'audience_id' => $audience->audience_id,
+                    'error_message' => $e->getMessage()
+                ]);
+            }
+            
             throw $e;
         }
     }
@@ -281,7 +319,17 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             ]
         );
 
-        // Log removed to reduce verbosity - only log errors
+        if ($created < 5) {
+            Log::info('💾 FetchCompetitorFollowersJob: Saved follower to database', [
+                'audience_id' => $audience->audience_id,
+                'audience_list_id' => $savedItem->id,
+                'public_id' => $publicId,
+                'first_name' => $first,
+                'last_name' => $last,
+                'was_created' => $savedItem->wasRecentlyCreated,
+                'was_updated' => !$savedItem->wasRecentlyCreated
+            ]);
+        }
 
         if ($publicId) {
             $seen[$publicId] = true;

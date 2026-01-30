@@ -55,12 +55,16 @@
                 </thead>
                 <tbody>
                     @forelse($audiences as $aud)
+                        @php
+                            $meta = json_decode($aud->source_meta, true) ?? [];
+                            $companyUrl = $meta['company_url'] ?? null;
+                            $lastError = $meta['last_error'] ?? null;
+                            $lastErrorType = $meta['last_error_type'] ?? null;
+                            $isSessionError = $lastErrorType === 'session_cookie';
+                        @endphp
                         <tr class="border-t">
                             <td class="py-2 pr-4">
                                 <div class="font-medium text-gray-900">{{ $aud->audience_name ?? 'Competitor Followers' }}</div>
-                                @php
-                                    $companyUrl = optional(json_decode($aud->source_meta))->company_url;
-                                @endphp
                                 @if($companyUrl)
                                     <a href="{{ $companyUrl }}" target="_blank" rel="noopener noreferrer" class="text-xs text-[#0077b5] hover:text-[#005885] hover:underline inline-flex items-center gap-1">
                                         {{ $companyUrl }}
@@ -70,6 +74,20 @@
                                     </a>
                                 @else
                                     <div class="text-xs text-gray-400">N/A</div>
+                                @endif
+                                @if($isSessionError && $lastError)
+                                    <div class="mt-2 rounded border border-orange-300 bg-orange-50 text-orange-800 px-3 py-2 text-xs">
+                                        <div class="font-medium flex items-center gap-1">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                            </svg>
+                                            Session Cookie Error
+                                        </div>
+                                        <p class="mt-1">{{ $lastError }}</p>
+                                        <a href="{{ route('social-account.index') }}" class="mt-1 inline-flex items-center gap-1 text-orange-700 hover:text-orange-900 font-medium underline">
+                                            Update LinkedIn Session →
+                                        </a>
+                                    </div>
                                 @endif
                             </td>
                             <td class="py-2 pr-4 text-gray-700">

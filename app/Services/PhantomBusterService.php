@@ -717,12 +717,28 @@ class PhantomBusterService
                     });
                     
                     $postEngagers += count($validLikers);
-                    Log::info('PhantomBuster: Got likers for post', [
+                    Log::info('📊 PhantomBuster: Got likers for post', [
                         'post_url' => $postUrl,
-                        'likers_count' => count($validLikers),
-                        'filtered_out' => count($likers) - count($validLikers)
+                        'raw_likers_count' => count($likers),
+                        'valid_likers_count' => count($validLikers),
+                        'filtered_out' => count($likers) - count($validLikers),
+                        'sample_liker_keys' => !empty($validLikers) ? array_keys($validLikers[0] ?? []) : []
                     ]);
+                    
+                    if (!empty($validLikers)) {
+                        Log::info('📋 PhantomBuster: Sample liker data', [
+                            'post_url' => $postUrl,
+                            'sample' => array_slice($validLikers, 0, 2)
+                        ]);
+                    }
+                    
                     $allEngagers = array_merge($allEngagers, $validLikers);
+                    
+                    Log::info('📈 PhantomBuster: Engagers accumulation', [
+                        'post_url' => $postUrl,
+                        'new_likers' => count($validLikers),
+                        'total_engagers_so_far' => count($allEngagers)
+                    ]);
                 } catch (\Exception $e) {
                     $likersFailed = true;
                     $errorMsg = $e->getMessage();
@@ -819,12 +835,21 @@ class PhantomBusterService
             ]);
 
             // Remove duplicates by public identifier and limit to top 500
+            Log::info('🔄 PhantomBuster: Starting deduplication and limiting', [
+                'total_engagers_before' => count($allEngagers),
+                'target_limit' => 500
+            ]);
+            
             $uniqueEngagers = [];
             $seen = [];
-            foreach ($allEngagers as $engager) {
+            $skippedDuplicates = 0;
+            $skippedNoPublicId = 0;
+            
+            foreach ($allEngagers as $index => $engager) {
                 // Skip if not an array (shouldn't happen, but safety check)
                 if (!is_array($engager)) {
-                    Log::warning('PhantomBuster: Skipping non-array engager', [
+                    Log::warning('⚠️ PhantomBuster: Skipping non-array engager', [
+                        'index' => $index,
                         'type' => gettype($engager),
                         'value' => is_string($engager) ? substr($engager, 0, 100) : $engager
                     ]);
@@ -833,9 +858,11 @@ class PhantomBusterService
                 
                 // Stop if we've reached the limit of 500 engagers
                 if (count($uniqueEngagers) >= 500) {
-                    Log::info('PhantomBuster: Reached limit of 500 engagers per audience', [
+                    Log::info('🛑 PhantomBuster: Reached limit of 500 engagers per audience', [
                         'total_before_limit' => count($allEngagers),
-                        'unique_after_limit' => count($uniqueEngagers)
+                        'unique_after_limit' => count($uniqueEngagers),
+                        'skipped_duplicates' => $skippedDuplicates,
+                        'skipped_no_public_id' => $skippedNoPublicId
                     ]);
                     break;
                 }
@@ -866,11 +893,22 @@ class PhantomBusterService
                 if ($publicId && !isset($seen[$publicId])) {
                     $uniqueEngagers[] = $engager;
                     $seen[$publicId] = true;
+                } elseif ($publicId && isset($seen[$publicId])) {
+                    $skippedDuplicates++;
                 } elseif (!$publicId) {
                     // If no public ID, still add it (might be unique by other fields)
                     $uniqueEngagers[] = $engager;
+                    $skippedNoPublicId++;
                 }
             }
+            
+            Log::info('✅ PhantomBuster: Deduplication completed', [
+                'total_engagers_before' => count($allEngagers),
+                'unique_engagers_after' => count($uniqueEngagers),
+                'skipped_duplicates' => $skippedDuplicates,
+                'skipped_no_public_id' => $skippedNoPublicId,
+                'sample_unique_engager' => !empty($uniqueEngagers) ? array_slice($uniqueEngagers, 0, 1) : []
+            ]);
 
             Log::info('PhantomBuster: Finished fetching engagers', [
                 'company_url' => $companyUrl,
@@ -1567,6 +1605,31 @@ class PhantomBusterService
             $messages = $output['data']['messages'] ?? [];
             $progress = $output['data']['progress'] ?? null;
             
+            // Check output string for session/cookie errors
+            $outputString = $output['data']['output'] ?? '';
+            if (is_string($outputString)) {
+                $sessionErrorPatterns = [
+                    'No valid credentials found',
+                    'Invalid/expired cookie',
+                    'network-cookie-invalid',
+                    'No valid credentials',
+                    'cookie-invalid',
+                    'session expired'
+                ];
+                
+                foreach ($sessionErrorPatterns as $pattern) {
+                    if (stripos($outputString, $pattern) !== false) {
+                        $errorMessage = 'LinkedIn session cookie (li_at) is expired or invalid. Please update your LinkedIn session cookie from the Social Accounts page.';
+                        Log::error('🔐 PhantomBuster: Session/Cookie error detected', [
+                            'post_url' => $postUrl,
+                            'error_pattern' => $pattern,
+                            'output_sample' => substr($outputString, 0, 500)
+                        ]);
+                        throw new \Exception($errorMessage);
+                    }
+                }
+            }
+            
             // Log full output structure on first attempt or when finished
             if ($attempts === 1 || $containerStatus === 'not running' || $containerStatus === 'finished') {
                 Log::info('PhantomBuster: Full output structure', [
@@ -1687,22 +1750,64 @@ class PhantomBusterService
                                 $jsonUrl = $decoded['jsonUrl'] ?? $decoded['json_url'] ?? null;
                                 $csvUrl = $decoded['csvURL'] ?? $decoded['csv_url'] ?? null;
                                 
+                                Log::info('🔍 PhantomBuster: Detected CSV/JSON URLs in resultObject', [
+                                    'post_url' => $postUrl,
+                                    'has_json_url' => !empty($jsonUrl),
+                                    'has_csv_url' => !empty($csvUrl),
+                                    'json_url' => $jsonUrl,
+                                    'csv_url' => $csvUrl,
+                                    'decoded_keys' => array_keys($decoded)
+                                ]);
+                                
                                 // Prefer JSON over CSV
                                 if ($jsonUrl) {
                                     try {
-                                        Log::info('PhantomBuster: Downloading likers from JSON URL', ['json_url' => $jsonUrl]);
+                                        Log::info('📥 PhantomBuster: Starting JSON download', [
+                                            'json_url' => $jsonUrl,
+                                            'post_url' => $postUrl
+                                        ]);
                                         $jsonContent = file_get_contents($jsonUrl);
+                                        $jsonSize = strlen($jsonContent ?? '');
+                                        Log::info('📥 PhantomBuster: JSON download completed', [
+                                            'json_url' => $jsonUrl,
+                                            'content_size_bytes' => $jsonSize,
+                                            'content_size_kb' => round($jsonSize / 1024, 2)
+                                        ]);
+                                        
                                         if ($jsonContent) {
                                             $likersData = json_decode($jsonContent, true);
-                                            if (json_last_error() === JSON_ERROR_NONE && is_array($likersData)) {
-                                                Log::info('PhantomBuster: Successfully parsed likers from JSON', ['count' => count($likersData)]);
+                                            $jsonError = json_last_error();
+                                            
+                                            Log::info('📊 PhantomBuster: JSON parsing result', [
+                                                'json_error_code' => $jsonError,
+                                                'json_error_message' => json_last_error_msg(),
+                                                'is_array' => is_array($likersData),
+                                                'count' => is_array($likersData) ? count($likersData) : 0,
+                                                'first_item_keys' => is_array($likersData) && !empty($likersData) ? array_keys($likersData[0] ?? []) : []
+                                            ]);
+                                            
+                                            if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
+                                                Log::info('✅ PhantomBuster: Successfully parsed likers from JSON', [
+                                                    'count' => count($likersData),
+                                                    'post_url' => $postUrl,
+                                                    'sample_liker' => array_slice($likersData, 0, 1)
+                                                ]);
                                                 return $likersData;
+                                            } else {
+                                                Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty', [
+                                                    'json_error' => json_last_error_msg(),
+                                                    'is_array' => is_array($likersData),
+                                                    'count' => is_array($likersData) ? count($likersData) : 0
+                                                ]);
                                             }
+                                        } else {
+                                            Log::warning('⚠️ PhantomBuster: JSON content is empty', ['json_url' => $jsonUrl]);
                                         }
                                     } catch (\Throwable $e) {
-                                        Log::warning('PhantomBuster: Failed to download/parse JSON', [
+                                        Log::error('❌ PhantomBuster: Failed to download/parse JSON', [
                                             'json_url' => $jsonUrl,
-                                            'error' => $e->getMessage()
+                                            'error' => $e->getMessage(),
+                                            'trace' => $e->getTraceAsString()
                                         ]);
                                     }
                                 }
@@ -1710,14 +1815,31 @@ class PhantomBusterService
                                 // Fallback to CSV if JSON failed
                                 if ($csvUrl) {
                                     try {
-                                        Log::info('PhantomBuster: Downloading likers from CSV URL', ['csv_url' => $csvUrl]);
+                                        Log::info('📥 PhantomBuster: Starting CSV download (fallback)', [
+                                            'csv_url' => $csvUrl,
+                                            'post_url' => $postUrl
+                                        ]);
                                         $csvContent = file_get_contents($csvUrl);
+                                        $csvSize = strlen($csvContent ?? '');
+                                        Log::info('📥 PhantomBuster: CSV download completed', [
+                                            'csv_url' => $csvUrl,
+                                            'content_size_bytes' => $csvSize,
+                                            'content_size_kb' => round($csvSize / 1024, 2)
+                                        ]);
+                                        
                                         if ($csvContent) {
                                             $lines = explode("\n", trim($csvContent));
+                                            $totalLines = count($lines);
                                             $headers = str_getcsv(array_shift($lines));
-                                            $likersData = [];
                                             
-                                            foreach ($lines as $line) {
+                                            Log::info('📊 PhantomBuster: CSV parsing started', [
+                                                'total_lines' => $totalLines,
+                                                'headers' => $headers,
+                                                'data_lines' => count($lines)
+                                            ]);
+                                            
+                                            $likersData = [];
+                                            foreach ($lines as $lineNum => $line) {
                                                 if (empty(trim($line))) continue;
                                                 $row = str_getcsv($line);
                                                 if (count($row) === count($headers)) {
@@ -1725,25 +1847,39 @@ class PhantomBusterService
                                                 }
                                             }
                                             
-                                            Log::info('PhantomBuster: Successfully parsed likers from CSV', ['count' => count($likersData)]);
+                                            Log::info('✅ PhantomBuster: Successfully parsed likers from CSV', [
+                                                'count' => count($likersData),
+                                                'post_url' => $postUrl,
+                                                'sample_liker' => !empty($likersData) ? array_slice($likersData, 0, 1) : []
+                                            ]);
                                             return $likersData;
+                                        } else {
+                                            Log::warning('⚠️ PhantomBuster: CSV content is empty', ['csv_url' => $csvUrl]);
                                         }
                                     } catch (\Throwable $e) {
-                                        Log::warning('PhantomBuster: Failed to download/parse CSV', [
+                                        Log::error('❌ PhantomBuster: Failed to download/parse CSV', [
                                             'csv_url' => $csvUrl,
-                                            'error' => $e->getMessage()
+                                            'error' => $e->getMessage(),
+                                            'trace' => $e->getTraceAsString()
                                         ]);
                                     }
                                 }
                                 
                                 // If we couldn't download, log and continue
-                                Log::warning('PhantomBuster: resultObject contains URLs but download failed', [
+                                Log::error('❌ PhantomBuster: resultObject contains URLs but download/parse failed', [
                                     'has_json' => !empty($jsonUrl),
-                                    'has_csv' => !empty($csvUrl)
+                                    'has_csv' => !empty($csvUrl),
+                                    'json_url' => $jsonUrl,
+                                    'csv_url' => $csvUrl,
+                                    'post_url' => $postUrl
                                 ]);
                             } else {
                                 // It's valid data (array of likers)
-                                Log::info('PhantomBuster: Found likers in resultObject (decoded from JSON string)', ['count' => count($decoded)]);
+                                Log::info('✅ PhantomBuster: Found likers directly in resultObject (decoded from JSON string)', [
+                                    'count' => count($decoded),
+                                    'post_url' => $postUrl,
+                                    'sample_liker' => !empty($decoded) ? array_slice($decoded, 0, 1) : []
+                                ]);
                                 return $decoded;
                             }
                         }
@@ -1809,22 +1945,64 @@ class PhantomBusterService
                             $jsonUrl = $resultObject['jsonUrl'] ?? $resultObject['json_url'] ?? null;
                             $csvUrl = $resultObject['csvURL'] ?? $resultObject['csv_url'] ?? null;
                             
+                            Log::info('🔍 PhantomBuster: Detected CSV/JSON URLs in resultObject (array)', [
+                                'post_url' => $postUrl,
+                                'has_json_url' => !empty($jsonUrl),
+                                'has_csv_url' => !empty($csvUrl),
+                                'json_url' => $jsonUrl,
+                                'csv_url' => $csvUrl,
+                                'resultObject_keys' => array_keys($resultObject)
+                            ]);
+                            
                             // Prefer JSON over CSV
                             if ($jsonUrl) {
                                 try {
-                                    Log::info('PhantomBuster: Downloading likers from JSON URL', ['json_url' => $jsonUrl]);
+                                    Log::info('📥 PhantomBuster: Starting JSON download (array case)', [
+                                        'json_url' => $jsonUrl,
+                                        'post_url' => $postUrl
+                                    ]);
                                     $jsonContent = file_get_contents($jsonUrl);
+                                    $jsonSize = strlen($jsonContent ?? '');
+                                    Log::info('📥 PhantomBuster: JSON download completed (array case)', [
+                                        'json_url' => $jsonUrl,
+                                        'content_size_bytes' => $jsonSize,
+                                        'content_size_kb' => round($jsonSize / 1024, 2)
+                                    ]);
+                                    
                                     if ($jsonContent) {
                                         $likersData = json_decode($jsonContent, true);
-                                        if (json_last_error() === JSON_ERROR_NONE && is_array($likersData)) {
-                                            Log::info('PhantomBuster: Successfully parsed likers from JSON', ['count' => count($likersData)]);
+                                        $jsonError = json_last_error();
+                                        
+                                        Log::info('📊 PhantomBuster: JSON parsing result (array case)', [
+                                            'json_error_code' => $jsonError,
+                                            'json_error_message' => json_last_error_msg(),
+                                            'is_array' => is_array($likersData),
+                                            'count' => is_array($likersData) ? count($likersData) : 0,
+                                            'first_item_keys' => is_array($likersData) && !empty($likersData) ? array_keys($likersData[0] ?? []) : []
+                                        ]);
+                                        
+                                        if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
+                                            Log::info('✅ PhantomBuster: Successfully parsed likers from JSON (array case)', [
+                                                'count' => count($likersData),
+                                                'post_url' => $postUrl,
+                                                'sample_liker' => array_slice($likersData, 0, 1)
+                                            ]);
                                             return $likersData;
+                                        } else {
+                                            Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty (array case)', [
+                                                'json_error' => json_last_error_msg(),
+                                                'is_array' => is_array($likersData),
+                                                'count' => is_array($likersData) ? count($likersData) : 0
+                                            ]);
                                         }
+                                    } else {
+                                        Log::warning('⚠️ PhantomBuster: JSON content is empty (array case)', ['json_url' => $jsonUrl]);
                                     }
                                 } catch (\Throwable $e) {
-                                    Log::warning('PhantomBuster: Failed to download/parse JSON', [
+                                    Log::error('❌ PhantomBuster: Failed to download/parse JSON (array case)', [
                                         'json_url' => $jsonUrl,
-                                        'error' => $e->getMessage()
+                                        'error' => $e->getMessage(),
+                                        'trace' => $e->getTraceAsString()
                                     ]);
                                 }
                             }
@@ -1832,14 +2010,31 @@ class PhantomBusterService
                             // Fallback to CSV if JSON failed
                             if ($csvUrl) {
                                 try {
-                                    Log::info('PhantomBuster: Downloading likers from CSV URL', ['csv_url' => $csvUrl]);
+                                    Log::info('📥 PhantomBuster: Starting CSV download (fallback, array case)', [
+                                        'csv_url' => $csvUrl,
+                                        'post_url' => $postUrl
+                                    ]);
                                     $csvContent = file_get_contents($csvUrl);
+                                    $csvSize = strlen($csvContent ?? '');
+                                    Log::info('📥 PhantomBuster: CSV download completed (array case)', [
+                                        'csv_url' => $csvUrl,
+                                        'content_size_bytes' => $csvSize,
+                                        'content_size_kb' => round($csvSize / 1024, 2)
+                                    ]);
+                                    
                                     if ($csvContent) {
                                         $lines = explode("\n", trim($csvContent));
+                                        $totalLines = count($lines);
                                         $headers = str_getcsv(array_shift($lines));
-                                        $likersData = [];
                                         
-                                        foreach ($lines as $line) {
+                                        Log::info('📊 PhantomBuster: CSV parsing started (array case)', [
+                                            'total_lines' => $totalLines,
+                                            'headers' => $headers,
+                                            'data_lines' => count($lines)
+                                        ]);
+                                        
+                                        $likersData = [];
+                                        foreach ($lines as $lineNum => $line) {
                                             if (empty(trim($line))) continue;
                                             $row = str_getcsv($line);
                                             if (count($row) === count($headers)) {
@@ -1847,25 +2042,39 @@ class PhantomBusterService
                                             }
                                         }
                                         
-                                        Log::info('PhantomBuster: Successfully parsed likers from CSV', ['count' => count($likersData)]);
+                                        Log::info('✅ PhantomBuster: Successfully parsed likers from CSV (array case)', [
+                                            'count' => count($likersData),
+                                            'post_url' => $postUrl,
+                                            'sample_liker' => !empty($likersData) ? array_slice($likersData, 0, 1) : []
+                                        ]);
                                         return $likersData;
+                                    } else {
+                                        Log::warning('⚠️ PhantomBuster: CSV content is empty (array case)', ['csv_url' => $csvUrl]);
                                     }
                                 } catch (\Throwable $e) {
-                                    Log::warning('PhantomBuster: Failed to download/parse CSV', [
+                                    Log::error('❌ PhantomBuster: Failed to download/parse CSV (array case)', [
                                         'csv_url' => $csvUrl,
-                                        'error' => $e->getMessage()
+                                        'error' => $e->getMessage(),
+                                        'trace' => $e->getTraceAsString()
                                     ]);
                                 }
                             }
                             
                             // If we couldn't download, log and continue
-                            Log::warning('PhantomBuster: resultObject contains URLs but download failed', [
+                            Log::error('❌ PhantomBuster: resultObject contains URLs but download/parse failed (array case)', [
                                 'has_json' => !empty($jsonUrl),
-                                'has_csv' => !empty($csvUrl)
+                                'has_csv' => !empty($csvUrl),
+                                'json_url' => $jsonUrl,
+                                'csv_url' => $csvUrl,
+                                'post_url' => $postUrl
                             ]);
                         } else {
                             // It's valid data (array of likers)
-                            Log::info('PhantomBuster: Found likers in resultObject', ['count' => count($resultObject)]);
+                            Log::info('✅ PhantomBuster: Found likers directly in resultObject (array)', [
+                                'count' => count($resultObject),
+                                'post_url' => $postUrl,
+                                'sample_liker' => !empty($resultObject) ? array_slice($resultObject, 0, 1) : []
+                            ]);
                             return $resultObject;
                         }
                     }
