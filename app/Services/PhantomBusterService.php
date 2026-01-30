@@ -12,16 +12,94 @@ class PhantomBusterService
     private string $apiUrl;
     private ?string $sessionCookieOverride = null;
     private ?string $userAgentOverride = null;
+    private ?PhantomBusterWorkspaceManager $workspaceManager = null;
+    private ?array $currentWorkspace = null; // ['workspace' => [...], 'lock' => Lock, 'lock_key' => '...']
+    private bool $ownsWorkspace = false; // Track if we acquired the workspace in this instance
 
     public function __construct()
     {
         $this->apiKey = config('services.phantombuster.api_key');
         $this->apiUrl = config('services.phantombuster.api_url', 'https://api.phantombuster.com/api/v1');
+        $this->workspaceManager = new PhantomBusterWorkspaceManager();
 
-        if (!$this->apiKey) {
-            Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
-            throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
+        // Use workspace manager if multi-workspace is enabled, otherwise use single API key
+        if ($this->workspaceManager->isMultiWorkspaceEnabled()) {
+            // Will acquire workspace when needed
+        } else {
+            if (!$this->apiKey) {
+                Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
+                throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
+            }
         }
+    }
+
+    /**
+     * Acquire a workspace for this operation
+     * Must be called before making API calls when multi-workspace is enabled
+     */
+    private function ensureWorkspace(int $maxWaitSeconds = null): void
+    {
+        if ($this->currentWorkspace) {
+            return; // Already have a workspace
+        }
+
+        if ($this->workspaceManager->isMultiWorkspaceEnabled()) {
+            $workspaceData = $this->workspaceManager->acquireWorkspace($maxWaitSeconds);
+            
+            if (!$workspaceData) {
+                throw new \Exception(
+                    "All PhantomBuster workspaces are currently busy. " .
+                    "Please wait a few minutes and try again. " .
+                    "We have {$this->workspaceManager->getWorkspaceCount()} workspace(s) available."
+                );
+            }
+            
+            $this->currentWorkspace = $workspaceData;
+            $this->apiKey = $workspaceData['workspace']['api_key'];
+            $this->ownsWorkspace = true;
+        }
+    }
+
+    /**
+     * Release the current workspace
+     */
+    private function releaseWorkspace(): void
+    {
+        if ($this->currentWorkspace && $this->ownsWorkspace) {
+            $this->workspaceManager->releaseWorkspace($this->currentWorkspace['lock']);
+            $this->currentWorkspace = null;
+            $this->ownsWorkspace = false;
+        }
+    }
+
+    /**
+     * Get phantom ID for current workspace
+     */
+    private function getPhantomId(string $type): ?string
+    {
+        if ($this->currentWorkspace) {
+            // Map type to workspace key
+            $keyMap = [
+                'post_likers' => 'linkedin_post_likers_phantom_id',
+                'post_comments' => 'linkedin_post_comments_phantom_id',
+                'search_export' => 'linkedin_search_export_phantom_id',
+                'profile_scraper' => 'linkedin_profile_scraper_phantom_id',
+            ];
+            
+            $key = $keyMap[$type] ?? "linkedin_{$type}_phantom_id";
+            return $this->currentWorkspace['workspace'][$key] ?? null;
+        }
+        
+        // Fallback to single workspace config
+        return config("services.phantombuster.linkedin_{$type}_phantom_id");
+    }
+
+    /**
+     * Cleanup workspace on destruction
+     */
+    public function __destruct()
+    {
+        $this->releaseWorkspace();
     }
 
     /**
@@ -611,8 +689,12 @@ class PhantomBusterService
         array $alreadyScrapedPostUrls = [],
         $audience = null
     ): array {
+        // Acquire workspace for this operation
+        $this->ensureWorkspace($maxWaitSeconds);
+        
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
+        
         try {
             Log::info('PhantomBuster: Starting to fetch company post engagers', [
                 'company_url' => $companyUrl
@@ -643,6 +725,7 @@ class PhantomBusterService
             
             if (empty($allPostUrls)) {
                 Log::warning('PhantomBuster: No post URLs found in posts', ['company_url' => $companyUrl]);
+                $this->releaseWorkspace();
                 return ['engagers' => [], 'newly_scraped_posts' => []];
             }
             
@@ -667,6 +750,7 @@ class PhantomBusterService
                     'total_posts' => count($allPostUrls),
                     'already_scraped' => count($alreadyScrapedPostUrls)
                 ]);
+                $this->releaseWorkspace();
                 return ['engagers' => [], 'newly_scraped_posts' => []];
             }
 
@@ -892,11 +976,22 @@ class PhantomBusterService
             // Return both engagers and newly scraped posts for tracking
             // Note: Scraped posts are tracked per-user in the audience source_meta
             // This allows multiple users to attempt the same posts independently
-            return [
+            $result = [
                 'engagers' => $uniqueEngagers,
                 'newly_scraped_posts' => $newlyScrapedPostUrls ?? []
             ];
+            
+            // Release workspace before returning
+            $this->releaseWorkspace();
+            
+            return $result;
+        } catch (\Exception $e) {
+            // Release workspace on error
+            $this->releaseWorkspace();
+            throw $e;
         } finally {
+            // Release workspace in finally block to ensure it's always released
+            $this->releaseWorkspace();
             $this->sessionCookieOverride = null;
             $this->userAgentOverride = null;
         }
@@ -1488,7 +1583,8 @@ class PhantomBusterService
         int $maxWaitSeconds = 300,
         int $pollIntervalSeconds = 10
     ): array {
-        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
+        // Use workspace phantom ID if available, otherwise fallback to config
+        $phantomId = $this->getPhantomId('post_likers') ?? config('services.phantombuster.linkedin_post_likers_phantom_id');
         
         if (!$phantomId) {
             Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
@@ -2387,12 +2483,17 @@ class PhantomBusterService
         int $maxWaitSeconds = 300,
         int $pollIntervalSeconds = 10
     ): array {
+        // Acquire workspace for this operation
+        $this->ensureWorkspace($maxWaitSeconds);
+        
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+        // Use workspace phantom ID if available, otherwise fallback to config
+        $phantomId = $this->getPhantomId('profile_scraper') ?? config('services.phantombuster.linkedin_profile_scraper_phantom_id');
         
         if (!$phantomId) {
+            $this->releaseWorkspace();
             Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
             throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
         }
@@ -2583,19 +2684,25 @@ class PhantomBusterService
                 // Exit early if we have profile data, even if container is still running
                 // We'll check for email in the job itself
                 if ($profileData && !empty($profileData)) {
+                    $this->releaseWorkspace();
                     return $profileData;
                 }
 
                 if ($containerStatus === 'not running' || $containerStatus === 'finished' || $containerStatus === 'completed') {
                     if ($profileData) {
+                        $this->releaseWorkspace();
                         return $profileData;
                     }
                     break;
                 }
             }
 
-            return $profileData ?? [];
+            $result = $profileData ?? [];
+            $this->releaseWorkspace();
+            return $result;
         } catch (\Throwable $th) {
+            // Release workspace on error
+            $this->releaseWorkspace();
             Log::error('PhantomBuster: Failed to scrape profile', [
                 'profile_url' => $profileUrl,
                 'error' => $th->getMessage(),
@@ -2628,10 +2735,15 @@ class PhantomBusterService
         int $maxWaitSeconds = 600,
         int $pollIntervalSeconds = 15
     ): array {
+        // Acquire workspace for this operation
+        $this->ensureWorkspace($maxWaitSeconds);
+        
         try {
-            $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+            // Use workspace phantom ID if available, otherwise fallback to config
+            $phantomId = $this->getPhantomId('profile_scraper') ?? config('services.phantombuster.linkedin_profile_scraper_phantom_id');
             
             if (!$phantomId) {
+                $this->releaseWorkspace();
                 Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured');
                 throw new \Exception('LinkedIn Profile Scraper phantom ID not configured');
             }
@@ -2929,9 +3041,13 @@ class PhantomBusterService
                 'expected_count' => $profileCount
             ]);
 
-            return $results;
+            $finalResults = $results;
+            $this->releaseWorkspace();
+            return $finalResults;
 
         } catch (\Throwable $th) {
+            // Release workspace on error
+            $this->releaseWorkspace();
             Log::error('PhantomBuster: Failed to scrape profiles in batch', [
                 'profile_urls' => $profileUrls,
                 'error' => $th->getMessage(),
