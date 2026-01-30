@@ -72,7 +72,7 @@
                             </div>
                         </div>
                         <div class="flex items-center text-xs text-gray-500">
-                            <span class="text-green-600 font-medium">Since last week</span>
+                            <span id="profile-views-change-indicator" class="font-medium">Since last week</span>
                         </div>
                     </div>
                 </div>
@@ -187,7 +187,32 @@ function ministats(){
         url: '/ministats',
         method: 'get',
         success: function(res){
-            $('.profile-views').text(`${res.profileViews}%`)
+            // Format profile views - handle negative values properly
+            let profileViewsDisplay = res.profileViews || 0;
+            let profileViewsValue = profileViewsDisplay;
+            
+            // Convert to number if it's a string
+            if (typeof profileViewsDisplay === 'string') {
+                // Remove any existing % sign or + sign
+                profileViewsDisplay = profileViewsDisplay.replace('%', '').replace('+', '');
+                profileViewsValue = parseFloat(profileViewsDisplay);
+            }
+            
+            // Format the display value
+            if (profileViewsValue < 0) {
+                // Negative value - show with red color
+                $('.profile-views').text(`${profileViewsValue}%`).css('color', '#dc3545');
+                $('#profile-views-change-indicator').text('Since last week').css('color', '#dc3545');
+            } else if (profileViewsValue > 0) {
+                // Positive value - show with green color and + sign
+                $('.profile-views').text(`+${profileViewsValue}%`).css('color', '#28a745');
+                $('#profile-views-change-indicator').text('Since last week').css('color', '#28a745');
+            } else {
+                // Zero or no change
+                $('.profile-views').text('0%').css('color', '#6c757d');
+                $('#profile-views-change-indicator').text('Since last week').css('color', '#6c757d');
+            }
+            
             $('.sent-invite').text(`${res.sentInvites}`)
             $('.num-connects').text(`${res.numConnections}`)
         },
