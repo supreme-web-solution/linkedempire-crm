@@ -56,6 +56,18 @@ These commands are automatically scheduled in `routes/console.php` and will run 
 - **Purpose:** Fetches posts, generates AI comments, and schedules/posts them automatically
 - **Status:** ✅ Active
 
+### 6. **Flush Pending Email Batches**
+- **Command:** `php artisan email:flush-pending-batches`
+- **Schedule:** Every 5 minutes
+- **Purpose:** Processes pending email fetch batches that have been waiting (batches with less than 20 items after 5 minutes)
+- **Status:** ✅ Active
+
+### 7. **Reset Daily Email Scraping Counts**
+- **Command:** `php artisan email:reset-daily-scraping-counts`
+- **Schedule:** Daily at 00:00 (midnight)
+- **Purpose:** Resets daily email scraping counts for all users at the start of each new day
+- **Status:** ✅ Active
+
 ---
 
 ## 🔄 **QUEUE WORKER** (Required for Background Jobs)
@@ -231,6 +243,12 @@ php artisan calls:send-reminders
 
 # Test auto comments
 php artisan app:process-auto-comments
+
+# Test flush pending email batches
+php artisan email:flush-pending-batches
+
+# Test reset daily scraping counts
+php artisan email:reset-daily-scraping-counts
 ```
 
 ### **Check Queue Status:**

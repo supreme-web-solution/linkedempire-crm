@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>{{config('app.name')}}</title>
-    <link rel="shortcut icon" href="{{ asset('images/linkdominator-48.png') }}" type="image/png" />
+    {{-- <link rel="shortcut icon" href="{{ asset('images/linkdominator-48.png') }}" type="image/png" /> --}}
+    <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -55,6 +56,7 @@
         @media (min-width: 1024px) {
             #hs-application-sidebar.sidebar-collapsed {
                 width: 4.5rem !important; /* 72px - icon only */
+                padding-right: 0.75rem !important; /* Add right padding so items don't touch body */
             }
         }
         
@@ -65,16 +67,29 @@
             visibility: hidden;
         }
         
-        /* Center items and reduce padding in collapsed state */
-        .sidebar-collapsed nav a {
-            justify-content: center !important;
-            padding-left: 0.625rem !important;
-            padding-right: 0.625rem !important;
+        /* Reduce nav padding when collapsed for better balance */
+        .sidebar-collapsed nav {
+            padding: 0.5rem !important; /* Reduced from p-4 to p-2 for better balance */
         }
         
-        /* Fix active indicator width in collapsed state */
+        /* Center items perfectly in collapsed state */
+        .sidebar-collapsed nav a {
+            justify-content: center !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+            margin: 0 auto !important; /* Ensure perfect centering */
+        }
+        
+        /* Fix active indicator in collapsed state - keep left border visible */
         .sidebar-collapsed nav a.bg-gray-100 {
             width: auto !important;
+            position: relative;
+        }
+        
+        /* Ensure active indicator bar is visible when collapsed */
+        .sidebar-collapsed nav a.bg-gray-100::before {
+            left: 0 !important;
+            height: 50% !important; /* Slightly shorter for better balance */
         }
         
         /* Adjust header padding */
@@ -102,9 +117,37 @@
         }
         
         /* Logo adjustments */
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
         .sidebar-collapsed .sidebar-logo {
-            padding-left: 0.5rem;
-            padding-right: 0.5rem;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
+            justify-content: center;
+            margin: 0 auto;
+        }
+        
+        /* Show full logo when expanded, hide collapsed logo */
+        .sidebar-logo .logo-full {
+            display: block;
+        }
+        
+        .sidebar-logo .logo-collapsed {
+            display: none;
+        }
+        
+        /* Show collapsed logo when sidebar is collapsed, hide full logo */
+        .sidebar-collapsed .sidebar-logo .logo-full {
+            display: none;
+        }
+        
+        .sidebar-collapsed .sidebar-logo .logo-collapsed {
+            display: block;
         }
         
         .sidebar-collapsed .sidebar-logo svg,
