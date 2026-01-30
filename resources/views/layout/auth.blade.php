@@ -7,7 +7,7 @@
 
     <title>{{config('app.name')}}</title>
     {{-- <link rel="shortcut icon" href="{{ asset('images/linkdominator-48.png') }}" type="image/png" /> --}}
-    {{-- <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" /> --}}
+    <link rel="shortcut icon" href="{{ asset('images/logo-1.png') }}" type="image/png" />
 
     @seo([
         'title' => config('app.name'),
