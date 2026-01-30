@@ -717,28 +717,7 @@ class PhantomBusterService
                     });
                     
                     $postEngagers += count($validLikers);
-                    Log::info('📊 PhantomBuster: Got likers for post', [
-                        'post_url' => $postUrl,
-                        'raw_likers_count' => count($likers),
-                        'valid_likers_count' => count($validLikers),
-                        'filtered_out' => count($likers) - count($validLikers),
-                        'sample_liker_keys' => !empty($validLikers) ? array_keys($validLikers[0] ?? []) : []
-                    ]);
-                    
-                    if (!empty($validLikers)) {
-                        Log::info('📋 PhantomBuster: Sample liker data', [
-                            'post_url' => $postUrl,
-                            'sample' => array_slice($validLikers, 0, 2)
-                        ]);
-                    }
-                    
                     $allEngagers = array_merge($allEngagers, $validLikers);
-                    
-                    Log::info('📈 PhantomBuster: Engagers accumulation', [
-                        'post_url' => $postUrl,
-                        'new_likers' => count($validLikers),
-                        'total_engagers_so_far' => count($allEngagers)
-                    ]);
                 } catch (\Exception $e) {
                     $likersFailed = true;
                     $errorMsg = $e->getMessage();
@@ -902,13 +881,6 @@ class PhantomBusterService
                 }
             }
             
-            Log::info('✅ PhantomBuster: Deduplication completed', [
-                'total_engagers_before' => count($allEngagers),
-                'unique_engagers_after' => count($uniqueEngagers),
-                'skipped_duplicates' => $skippedDuplicates,
-                'skipped_no_public_id' => $skippedNoPublicId,
-                'sample_unique_engager' => !empty($uniqueEngagers) ? array_slice($uniqueEngagers, 0, 1) : []
-            ]);
 
             Log::info('PhantomBuster: Finished fetching engagers', [
                 'company_url' => $companyUrl,
@@ -1750,48 +1722,38 @@ class PhantomBusterService
                                 $jsonUrl = $decoded['jsonUrl'] ?? $decoded['json_url'] ?? null;
                                 $csvUrl = $decoded['csvURL'] ?? $decoded['csv_url'] ?? null;
                                 
-                                Log::info('🔍 PhantomBuster: Detected CSV/JSON URLs in resultObject', [
-                                    'post_url' => $postUrl,
-                                    'has_json_url' => !empty($jsonUrl),
-                                    'has_csv_url' => !empty($csvUrl),
-                                    'json_url' => $jsonUrl,
-                                    'csv_url' => $csvUrl,
-                                    'decoded_keys' => array_keys($decoded)
-                                ]);
-                                
                                 // Prefer JSON over CSV
                                 if ($jsonUrl) {
                                     try {
-                                        Log::info('📥 PhantomBuster: Starting JSON download', [
-                                            'json_url' => $jsonUrl,
-                                            'post_url' => $postUrl
-                                        ]);
-                                        $jsonContent = file_get_contents($jsonUrl);
-                                        $jsonSize = strlen($jsonContent ?? '');
-                                        Log::info('📥 PhantomBuster: JSON download completed', [
-                                            'json_url' => $jsonUrl,
-                                            'content_size_bytes' => $jsonSize,
-                                            'content_size_kb' => round($jsonSize / 1024, 2)
-                                        ]);
+                                        // Use cURL for better error handling
+                                        $ch = curl_init($jsonUrl);
+                                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                                        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                                        $jsonContent = curl_exec($ch);
+                                        $curlError = curl_error($ch);
+                                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                        curl_close($ch);
                                         
-                                        if ($jsonContent) {
+                                        if ($curlError) {
+                                            Log::error('❌ PhantomBuster: cURL error downloading JSON', [
+                                                'json_url' => $jsonUrl,
+                                                'error' => $curlError,
+                                                'post_url' => $postUrl
+                                            ]);
+                                        } elseif ($httpCode !== 200) {
+                                            Log::error('❌ PhantomBuster: HTTP error downloading JSON', [
+                                                'json_url' => $jsonUrl,
+                                                'http_code' => $httpCode,
+                                                'post_url' => $postUrl
+                                            ]);
+                                        } elseif ($jsonContent) {
                                             $likersData = json_decode($jsonContent, true);
                                             $jsonError = json_last_error();
                                             
-                                            Log::info('📊 PhantomBuster: JSON parsing result', [
-                                                'json_error_code' => $jsonError,
-                                                'json_error_message' => json_last_error_msg(),
-                                                'is_array' => is_array($likersData),
-                                                'count' => is_array($likersData) ? count($likersData) : 0,
-                                                'first_item_keys' => is_array($likersData) && !empty($likersData) ? array_keys($likersData[0] ?? []) : []
-                                            ]);
-                                            
                                             if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
-                                                Log::info('✅ PhantomBuster: Successfully parsed likers from JSON', [
-                                                    'count' => count($likersData),
-                                                    'post_url' => $postUrl,
-                                                    'sample_liker' => array_slice($likersData, 0, 1)
-                                                ]);
                                                 return $likersData;
                                             } else {
                                                 Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty', [
@@ -1815,28 +1777,33 @@ class PhantomBusterService
                                 // Fallback to CSV if JSON failed
                                 if ($csvUrl) {
                                     try {
-                                        Log::info('📥 PhantomBuster: Starting CSV download (fallback)', [
-                                            'csv_url' => $csvUrl,
-                                            'post_url' => $postUrl
-                                        ]);
-                                        $csvContent = file_get_contents($csvUrl);
-                                        $csvSize = strlen($csvContent ?? '');
-                                        Log::info('📥 PhantomBuster: CSV download completed', [
-                                            'csv_url' => $csvUrl,
-                                            'content_size_bytes' => $csvSize,
-                                            'content_size_kb' => round($csvSize / 1024, 2)
-                                        ]);
+                                        // Use cURL for better error handling
+                                        $ch = curl_init($csvUrl);
+                                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                                        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                                        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                                        $csvContent = curl_exec($ch);
+                                        $curlError = curl_error($ch);
+                                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                        curl_close($ch);
                                         
-                                        if ($csvContent) {
-                                            $lines = explode("\n", trim($csvContent));
-                                            $totalLines = count($lines);
-                                            $headers = str_getcsv(array_shift($lines));
-                                            
-                                            Log::info('📊 PhantomBuster: CSV parsing started', [
-                                                'total_lines' => $totalLines,
-                                                'headers' => $headers,
-                                                'data_lines' => count($lines)
+                                        if ($curlError) {
+                                            Log::error('❌ PhantomBuster: cURL error downloading CSV', [
+                                                'csv_url' => $csvUrl,
+                                                'error' => $curlError,
+                                                'post_url' => $postUrl
                                             ]);
+                                        } elseif ($httpCode !== 200) {
+                                            Log::error('❌ PhantomBuster: HTTP error downloading CSV', [
+                                                'csv_url' => $csvUrl,
+                                                'http_code' => $httpCode,
+                                                'post_url' => $postUrl
+                                            ]);
+                                        } elseif ($csvContent) {
+                                            $lines = explode("\n", trim($csvContent));
+                                            $headers = str_getcsv(array_shift($lines));
                                             
                                             $likersData = [];
                                             foreach ($lines as $lineNum => $line) {
@@ -1847,12 +1814,9 @@ class PhantomBusterService
                                                 }
                                             }
                                             
-                                            Log::info('✅ PhantomBuster: Successfully parsed likers from CSV', [
-                                                'count' => count($likersData),
-                                                'post_url' => $postUrl,
-                                                'sample_liker' => !empty($likersData) ? array_slice($likersData, 0, 1) : []
-                                            ]);
-                                            return $likersData;
+                                            if (!empty($likersData)) {
+                                                return $likersData;
+                                            }
                                         } else {
                                             Log::warning('⚠️ PhantomBuster: CSV content is empty', ['csv_url' => $csvUrl]);
                                         }
@@ -1875,11 +1839,6 @@ class PhantomBusterService
                                 ]);
                             } else {
                                 // It's valid data (array of likers)
-                                Log::info('✅ PhantomBuster: Found likers directly in resultObject (decoded from JSON string)', [
-                                    'count' => count($decoded),
-                                    'post_url' => $postUrl,
-                                    'sample_liker' => !empty($decoded) ? array_slice($decoded, 0, 1) : []
-                                ]);
                                 return $decoded;
                             }
                         }
@@ -1945,48 +1904,38 @@ class PhantomBusterService
                             $jsonUrl = $resultObject['jsonUrl'] ?? $resultObject['json_url'] ?? null;
                             $csvUrl = $resultObject['csvURL'] ?? $resultObject['csv_url'] ?? null;
                             
-                            Log::info('🔍 PhantomBuster: Detected CSV/JSON URLs in resultObject (array)', [
-                                'post_url' => $postUrl,
-                                'has_json_url' => !empty($jsonUrl),
-                                'has_csv_url' => !empty($csvUrl),
-                                'json_url' => $jsonUrl,
-                                'csv_url' => $csvUrl,
-                                'resultObject_keys' => array_keys($resultObject)
-                            ]);
-                            
                             // Prefer JSON over CSV
                             if ($jsonUrl) {
                                 try {
-                                    Log::info('📥 PhantomBuster: Starting JSON download (array case)', [
-                                        'json_url' => $jsonUrl,
-                                        'post_url' => $postUrl
-                                    ]);
-                                    $jsonContent = file_get_contents($jsonUrl);
-                                    $jsonSize = strlen($jsonContent ?? '');
-                                    Log::info('📥 PhantomBuster: JSON download completed (array case)', [
-                                        'json_url' => $jsonUrl,
-                                        'content_size_bytes' => $jsonSize,
-                                        'content_size_kb' => round($jsonSize / 1024, 2)
-                                    ]);
+                                    // Use cURL for better error handling
+                                    $ch = curl_init($jsonUrl);
+                                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                                    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                                    $jsonContent = curl_exec($ch);
+                                    $curlError = curl_error($ch);
+                                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                    curl_close($ch);
                                     
-                                    if ($jsonContent) {
+                                    if ($curlError) {
+                                        Log::error('❌ PhantomBuster: cURL error downloading JSON (array case)', [
+                                            'json_url' => $jsonUrl,
+                                            'error' => $curlError,
+                                            'post_url' => $postUrl
+                                        ]);
+                                    } elseif ($httpCode !== 200) {
+                                        Log::error('❌ PhantomBuster: HTTP error downloading JSON (array case)', [
+                                            'json_url' => $jsonUrl,
+                                            'http_code' => $httpCode,
+                                            'post_url' => $postUrl
+                                        ]);
+                                    } elseif ($jsonContent) {
                                         $likersData = json_decode($jsonContent, true);
                                         $jsonError = json_last_error();
                                         
-                                        Log::info('📊 PhantomBuster: JSON parsing result (array case)', [
-                                            'json_error_code' => $jsonError,
-                                            'json_error_message' => json_last_error_msg(),
-                                            'is_array' => is_array($likersData),
-                                            'count' => is_array($likersData) ? count($likersData) : 0,
-                                            'first_item_keys' => is_array($likersData) && !empty($likersData) ? array_keys($likersData[0] ?? []) : []
-                                        ]);
-                                        
                                         if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
-                                            Log::info('✅ PhantomBuster: Successfully parsed likers from JSON (array case)', [
-                                                'count' => count($likersData),
-                                                'post_url' => $postUrl,
-                                                'sample_liker' => array_slice($likersData, 0, 1)
-                                            ]);
                                             return $likersData;
                                         } else {
                                             Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty (array case)', [
@@ -2010,28 +1959,33 @@ class PhantomBusterService
                             // Fallback to CSV if JSON failed
                             if ($csvUrl) {
                                 try {
-                                    Log::info('📥 PhantomBuster: Starting CSV download (fallback, array case)', [
-                                        'csv_url' => $csvUrl,
-                                        'post_url' => $postUrl
-                                    ]);
-                                    $csvContent = file_get_contents($csvUrl);
-                                    $csvSize = strlen($csvContent ?? '');
-                                    Log::info('📥 PhantomBuster: CSV download completed (array case)', [
-                                        'csv_url' => $csvUrl,
-                                        'content_size_bytes' => $csvSize,
-                                        'content_size_kb' => round($csvSize / 1024, 2)
-                                    ]);
+                                    // Use cURL for better error handling
+                                    $ch = curl_init($csvUrl);
+                                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                                    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                                    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+                                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                                    $csvContent = curl_exec($ch);
+                                    $curlError = curl_error($ch);
+                                    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                    curl_close($ch);
                                     
-                                    if ($csvContent) {
-                                        $lines = explode("\n", trim($csvContent));
-                                        $totalLines = count($lines);
-                                        $headers = str_getcsv(array_shift($lines));
-                                        
-                                        Log::info('📊 PhantomBuster: CSV parsing started (array case)', [
-                                            'total_lines' => $totalLines,
-                                            'headers' => $headers,
-                                            'data_lines' => count($lines)
+                                    if ($curlError) {
+                                        Log::error('❌ PhantomBuster: cURL error downloading CSV (array case)', [
+                                            'csv_url' => $csvUrl,
+                                            'error' => $curlError,
+                                            'post_url' => $postUrl
                                         ]);
+                                    } elseif ($httpCode !== 200) {
+                                        Log::error('❌ PhantomBuster: HTTP error downloading CSV (array case)', [
+                                            'csv_url' => $csvUrl,
+                                            'http_code' => $httpCode,
+                                            'post_url' => $postUrl
+                                        ]);
+                                    } elseif ($csvContent) {
+                                        $lines = explode("\n", trim($csvContent));
+                                        $headers = str_getcsv(array_shift($lines));
                                         
                                         $likersData = [];
                                         foreach ($lines as $lineNum => $line) {
@@ -2042,12 +1996,9 @@ class PhantomBusterService
                                             }
                                         }
                                         
-                                        Log::info('✅ PhantomBuster: Successfully parsed likers from CSV (array case)', [
-                                            'count' => count($likersData),
-                                            'post_url' => $postUrl,
-                                            'sample_liker' => !empty($likersData) ? array_slice($likersData, 0, 1) : []
-                                        ]);
-                                        return $likersData;
+                                        if (!empty($likersData)) {
+                                            return $likersData;
+                                        }
                                     } else {
                                         Log::warning('⚠️ PhantomBuster: CSV content is empty (array case)', ['csv_url' => $csvUrl]);
                                     }
@@ -2070,11 +2021,6 @@ class PhantomBusterService
                             ]);
                         } else {
                             // It's valid data (array of likers)
-                            Log::info('✅ PhantomBuster: Found likers directly in resultObject (array)', [
-                                'count' => count($resultObject),
-                                'post_url' => $postUrl,
-                                'sample_liker' => !empty($resultObject) ? array_slice($resultObject, 0, 1) : []
-                            ]);
                             return $resultObject;
                         }
                     }

@@ -58,6 +58,9 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             'company_url' => $this->companyUrl
         ]);
 
+        // Update status to processing
+        $this->updateFetchStatus($audience, 'processing', 'Fetching company posts...');
+
         try {
             // Get already-scraped post URLs from audience source_meta to skip them
             $scrapedPostUrls = [];
@@ -73,6 +76,9 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 'already_scraped_count' => count($scrapedPostUrls),
                 'company_url' => $this->companyUrl
             ]);
+            
+            // Update status: fetching engagers
+            $this->updateFetchStatus($audience, 'processing', 'Scraping post engagers from PhantomBuster...');
             
             // Fetch company post engagers (people who liked company posts)
             // This doesn't require admin access and works for any company
@@ -114,29 +120,13 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 ]);
             }
 
-            Log::info('💾 FetchCompetitorFollowersJob: Starting to store followers', [
-                'audience_id' => $audience->audience_id,
-                'total_followers_to_store' => count($followers),
-                'sample_follower' => !empty($followers) ? array_slice($followers, 0, 1) : []
-            ]);
+            // Update status: storing followers
+            $this->updateFetchStatus($audience, 'processing', 'Storing followers in database...');
             
             foreach ($followers as $index => $follower) {
                 // Skip if not an array (safety check)
                 if (!is_array($follower)) {
-                    Log::warning('⚠️ FetchCompetitorFollowersJob: Skipping non-array follower', [
-                        'index' => $index,
-                        'type' => gettype($follower),
-                        'value' => is_string($follower) ? substr($follower, 0, 100) : $follower
-                    ]);
                     continue;
-                }
-                
-                if ($index < 3) {
-                    Log::info('📝 FetchCompetitorFollowersJob: Processing follower', [
-                        'index' => $index,
-                        'follower_keys' => array_keys($follower),
-                        'follower_data' => $follower
-                    ]);
                 }
                 
                 $this->storeFollower($audience, $follower, $uniqueByPublicId, $created);
@@ -148,6 +138,37 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 'total_fetched' => count($followers),
                 'unique_by_public_id' => count($uniqueByPublicId)
             ]);
+            
+            // Only mark as completed if we actually stored followers
+            if ($created > 0) {
+                // Update status to completed
+                $this->updateFetchStatus($audience, 'completed', 'Completed successfully', [
+                    'stored_count' => $created,
+                    'total_fetched' => count($followers)
+                ]);
+            } else {
+                // No followers were stored - mark as failed with explanation
+                $errorMessage = 'No followers were stored. This may be due to: export limits, network errors, or no engagers found.';
+                if (count($followers) === 0) {
+                    $errorMessage = 'No engagers were found. This may be due to: PhantomBuster export limits, network connection issues, or the posts had no engagers.';
+                }
+                
+                $this->updateFetchStatus($audience, 'failed', $errorMessage);
+                
+                // Store error in source_meta for UI display
+                $meta = json_decode($audience->source_meta, true) ?? [];
+                $meta['last_error'] = $errorMessage;
+                $meta['last_error_type'] = 'no_data';
+                $meta['last_error_at'] = now()->toIso8601String();
+                $audience->source_meta = json_encode($meta);
+                $audience->save();
+                
+                Log::warning('⚠️ FetchCompetitorFollowersJob: Completed but no followers stored', [
+                    'audience_id' => $audience->audience_id,
+                    'total_fetched' => count($followers),
+                    'stored' => $created
+                ]);
+            }
         } catch (\Exception $e) {
             Log::error('❌ FetchCompetitorFollowersJob: PhantomBuster failed', [
                 'audience_id' => $audience->audience_id,
@@ -176,6 +197,9 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                     'error_message' => $e->getMessage()
                 ]);
             }
+            
+            // Update status to failed
+            $this->updateFetchStatus($audience, 'failed', 'Failed: ' . $e->getMessage());
             
             throw $e;
         }
@@ -319,17 +343,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             ]
         );
 
-        if ($created < 5) {
-            Log::info('💾 FetchCompetitorFollowersJob: Saved follower to database', [
-                'audience_id' => $audience->audience_id,
-                'audience_list_id' => $savedItem->id,
-                'public_id' => $publicId,
-                'first_name' => $first,
-                'last_name' => $last,
-                'was_created' => $savedItem->wasRecentlyCreated,
-                'was_updated' => !$savedItem->wasRecentlyCreated
-            ]);
-        }
 
         if ($publicId) {
             $seen[$publicId] = true;
@@ -368,6 +381,31 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 }
             }
         }
+    }
+
+    /**
+     * Update fetch status in audience source_meta
+     */
+    private function updateFetchStatus($audience, $status, $progress = null, $metadata = [])
+    {
+        $meta = json_decode($audience->source_meta, true) ?? [];
+        $meta['fetch_status'] = $status;
+        $meta['fetch_progress'] = $progress;
+        $meta['fetch_updated_at'] = now()->toIso8601String();
+        
+        if ($status === 'completed') {
+            $meta['fetch_completed_at'] = now()->toIso8601String();
+        } elseif ($status === 'failed') {
+            $meta['fetch_failed_at'] = now()->toIso8601String();
+        }
+        
+        // Merge any additional metadata
+        if (!empty($metadata)) {
+            $meta = array_merge($meta, $metadata);
+        }
+        
+        $audience->source_meta = json_encode($meta);
+        $audience->save();
     }
 }
 

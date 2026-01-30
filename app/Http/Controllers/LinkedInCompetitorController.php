@@ -79,7 +79,8 @@ class LinkedInCompetitorController extends Controller
             }
         }
         
-        // Query audiences - check by tag, source, OR if they have followers and look like competitors
+        // Query audiences - only show audiences for the current user (per-user isolation)
+        // Each user only sees their own job statuses and audiences
         $audiences = Audience::where('user_id', $user->id)
             ->where(function($query) use ($audienceIdsWithFollowers) {
                 $query->where('source', 'linkedin_company_followers')
@@ -190,6 +191,14 @@ class LinkedInCompetitorController extends Controller
                 'company_url' => $normalizedUrl
             ]);
         }
+
+        // Set initial status to pending
+        $meta = json_decode($audience->source_meta, true) ?? [];
+        $meta['fetch_status'] = 'pending';
+        $meta['fetch_started_at'] = now()->toIso8601String();
+        $meta['fetch_progress'] = 'Initializing...';
+        $audience->source_meta = json_encode($meta);
+        $audience->save();
 
         FetchCompetitorFollowersJob::dispatch(
             $user->id,
@@ -588,6 +597,27 @@ class LinkedInCompetitorController extends Controller
                 'error' => 'Failed to load daily limit'
             ], 500);
         }
+    }
+
+    public function getFetchStatus(Request $request, $audienceId)
+    {
+        $user = Auth::user();
+        // Only allow users to check status of their own audiences (per-user isolation)
+        $audience = Audience::where('user_id', $user->id)->where('id', $audienceId)->firstOrFail();
+        
+        $meta = json_decode($audience->source_meta, true) ?? [];
+        $status = $meta['fetch_status'] ?? null;
+        $progress = $meta['fetch_progress'] ?? null;
+        
+        return response()->json([
+            'status' => $status,
+            'progress' => $progress,
+            'fetch_started_at' => $meta['fetch_started_at'] ?? null,
+            'fetch_completed_at' => $meta['fetch_completed_at'] ?? null,
+            'fetch_failed_at' => $meta['fetch_failed_at'] ?? null,
+            'stored_count' => $meta['stored_count'] ?? null,
+            'total_fetched' => $meta['total_fetched'] ?? null
+        ]);
     }
 
     public function delete(Request $request, $audienceId)

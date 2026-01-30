@@ -61,10 +61,50 @@
                             $lastError = $meta['last_error'] ?? null;
                             $lastErrorType = $meta['last_error_type'] ?? null;
                             $isSessionError = $lastErrorType === 'session_cookie';
+                            $isNoDataError = $lastErrorType === 'no_data';
+                            $fetchStatus = $meta['fetch_status'] ?? null;
+                            $fetchProgress = $meta['fetch_progress'] ?? null;
                         @endphp
-                        <tr class="border-t">
+                        <tr class="border-t" data-audience-id="{{ $aud->id }}" data-fetch-status="{{ $fetchStatus }}">
                             <td class="py-2 pr-4">
                                 <div class="font-medium text-gray-900">{{ $aud->audience_name ?? 'Competitor Followers' }}</div>
+                                <div class="mt-1 fetch-status-container">
+                                    @if($fetchStatus && in_array($fetchStatus, ['pending', 'processing']))
+                                        <div class="flex items-center gap-2">
+                                            <div class="fetch-status-badge inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium
+                                                @if($fetchStatus === 'pending') bg-yellow-100 text-yellow-800
+                                                @elseif($fetchStatus === 'processing') bg-blue-100 text-blue-800
+                                                @endif">
+                                                @if($fetchStatus === 'processing')
+                                                    <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                @endif
+                                                <span class="fetch-status-text">
+                                                    @if($fetchStatus === 'pending') Pending
+                                                    @elseif($fetchStatus === 'processing') Processing
+                                                    @endif
+                                                </span>
+                                            </div>
+                                            <span class="fetch-progress-text text-xs text-gray-600">{{ $fetchProgress ?? '' }}</span>
+                                        </div>
+                                    @elseif($fetchStatus === 'completed')
+                                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                            Completed
+                                        </span>
+                                    @elseif($fetchStatus === 'failed')
+                                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                            Failed
+                                        </span>
+                                    @endif
+                                </div>
                                 @if($companyUrl)
                                     <a href="{{ $companyUrl }}" target="_blank" rel="noopener noreferrer" class="text-xs text-[#0077b5] hover:text-[#005885] hover:underline inline-flex items-center gap-1">
                                         {{ $companyUrl }}
@@ -87,6 +127,16 @@
                                         <a href="{{ route('social-account.index') }}" class="mt-1 inline-flex items-center gap-1 text-orange-700 hover:text-orange-900 font-medium underline">
                                             Update LinkedIn Session →
                                         </a>
+                                    </div>
+                                @elseif($isNoDataError && $lastError)
+                                    <div class="mt-2 rounded border border-yellow-300 bg-yellow-50 text-yellow-800 px-3 py-2 text-xs">
+                                        <div class="font-medium flex items-center gap-1">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                            </svg>
+                                            No Data Retrieved
+                                        </div>
+                                        <p class="mt-1">{{ $lastError }}</p>
                                     </div>
                                 @endif
                             </td>
@@ -153,6 +203,85 @@
 <script>
 $(document).ready(function() {
     let currentAudienceId = null;
+    let statusPollIntervals = {};
+    
+    // Function to update fetch status for an audience
+    function updateFetchStatus(audienceId) {
+        $.ajax({
+            url: `/competitor-followers/${audienceId}/status`,
+            method: 'GET',
+            success: function(response) {
+                const row = $(`tr[data-audience-id="${audienceId}"]`);
+                const statusBadge = row.find('.fetch-status-badge');
+                const statusText = row.find('.fetch-status-text');
+                const progressText = row.find('.fetch-progress-text');
+                
+                if (response.status === 'pending' || response.status === 'processing') {
+                    // Update status badge
+                    statusBadge.removeClass('bg-yellow-100 text-yellow-800 bg-green-100 text-green-800 bg-red-100 text-red-800')
+                               .addClass(response.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800');
+                    
+                    statusText.text(response.status === 'pending' ? 'Pending' : 'Processing');
+                    if (response.progress) {
+                        progressText.text(response.progress);
+                    }
+                    
+                    // Add spinner if processing
+                    if (response.status === 'processing' && !statusBadge.find('svg.animate-spin').length) {
+                        statusBadge.prepend('<svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>');
+                    }
+                } else if (response.status === 'completed') {
+                    // Stop polling
+                    if (statusPollIntervals[audienceId]) {
+                        clearInterval(statusPollIntervals[audienceId]);
+                        delete statusPollIntervals[audienceId];
+                    }
+                    
+                    // Update to completed badge
+                    const badgeHtml = '<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Completed</span>';
+                    row.find('.fetch-status-container').html(badgeHtml);
+                    
+                    // Reload page after 2 seconds to show updated follower count
+                    setTimeout(function() {
+                        location.reload();
+                    }, 2000);
+                } else if (response.status === 'failed') {
+                    // Stop polling
+                    if (statusPollIntervals[audienceId]) {
+                        clearInterval(statusPollIntervals[audienceId]);
+                        delete statusPollIntervals[audienceId];
+                    }
+                    
+                    // Update to failed badge
+                    const badgeHtml = '<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Failed</span>';
+                    row.find('.fetch-status-container').html(badgeHtml);
+                }
+            },
+            error: function() {
+                // Silently fail - don't show errors for status checks
+            }
+        });
+    }
+    
+    // Start polling for audiences with pending/processing status
+    $('tr[data-fetch-status="pending"], tr[data-fetch-status="processing"]').each(function() {
+        const audienceId = $(this).data('audience-id');
+        if (audienceId && !statusPollIntervals[audienceId]) {
+            // Poll immediately
+            updateFetchStatus(audienceId);
+            // Then poll every 3 seconds
+            statusPollIntervals[audienceId] = setInterval(function() {
+                updateFetchStatus(audienceId);
+            }, 3000);
+        }
+    });
+    
+    // Clean up intervals when page is unloaded
+    $(window).on('beforeunload', function() {
+        Object.values(statusPollIntervals).forEach(function(interval) {
+            clearInterval(interval);
+        });
+    });
     
     // Open delete modal
     $(document).on('click', '.delete-audience-btn', function(e) {

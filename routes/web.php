@@ -241,6 +241,7 @@ Route::middleware(['auth'])->group(function(){
         Route::post('/competitor-followers/{audienceId}/fetch-email', 'fetchEmail')->name('competitor-followers.fetch-email');
         Route::post('/competitor-followers/{audienceId}/fetch-email-batch', 'fetchEmailBatch')->name('competitor-followers.fetch-email-batch');
         Route::get('/competitor-followers/{audienceId}/check-email/{audienceListId}', 'checkEmail')->name('competitor-followers.check-email');
+        Route::get('/competitor-followers/{audienceId}/status', 'getFetchStatus')->name('competitor-followers.status');
         Route::delete('/competitor-followers/{audienceId}/delete', 'delete')->name('competitor-followers.delete');
     });
 
