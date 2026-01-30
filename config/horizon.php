@@ -207,7 +207,7 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 60,
+            'timeout' => 900, // Match job timeout (15 minutes for PhantomBuster operations)
             'nice' => 0,
         ],
     ],
@@ -223,6 +223,7 @@ return [
                 'balance'    => 'auto',
                 'processes'  => 10,     // ← start with 5–10 workers, increase later
                 'tries'      => 3,
+                'timeout'    => 900,     // 15 minutes timeout for long-running jobs like FetchCompetitorFollowersJob
             ],
             'supervisor-phantombuster' => [
                 'maxProcesses' => 10,    // Allow up to 10 workers for better concurrency

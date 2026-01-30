@@ -42,23 +42,28 @@ class FetchCompetitorFollowersJob implements ShouldQueue
 
     public function handle(): void
     {
+        // Update status immediately when job starts processing (before any other operations)
         $audience = Audience::find($this->audiencePkId);
         if (!$audience) {
             Log::warning('FetchCompetitorFollowersJob: Audience not found', ['audiencePkId' => $this->audiencePkId]);
             return;
         }
 
+        // Update status to processing IMMEDIATELY when job starts
+        $this->updateFetchStatus($audience, 'processing', 'Job started - initializing...');
+
+        Log::info('🚀 FetchCompetitorFollowersJob: Job picked up and started processing', [
+            'audience_id' => $audience->audience_id,
+            'user_id' => $this->userId,
+            'company_url' => $this->companyUrl,
+            'job_id' => $this->job->getJobId() ?? 'unknown'
+        ]);
+
         $service = new PhantomBusterService();
         $uniqueByPublicId = [];
         $created = 0;
 
-        Log::info('FetchCompetitorFollowersJob: started with PhantomBuster', [
-            'audience_id' => $audience->audience_id,
-            'user_id' => $this->userId,
-            'company_url' => $this->companyUrl
-        ]);
-
-        // Update status to processing
+        // Update status: fetching company posts
         $this->updateFetchStatus($audience, 'processing', 'Fetching company posts...');
 
         try {
