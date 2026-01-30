@@ -42,10 +42,7 @@ class PhantomBusterService
             $payload['argument'] = $arguments;
         }
 
-        Log::info('PhantomBuster: Launching phantom', [
-            'phantom_id' => $phantomId,
-            'arguments' => $arguments
-        ]);
+        // Log removed to reduce verbosity - only log errors
 
         try {
                 $response = Http::timeout(30) // 30 seconds timeout
@@ -148,11 +145,7 @@ class PhantomBusterService
 
             $data = $response->json();
             
-            // Log full response for debugging
-            Log::info('PhantomBuster: Launch response', [
-                'phantom_id' => $phantomId,
-                'full_response' => $data
-            ]);
+            // Log removed to reduce verbosity
             
             // Try different possible field names for container ID
             // First check nested structure (most common format)
@@ -173,13 +166,7 @@ class PhantomBusterService
                     ?? null;
             }
             
-            Log::info('PhantomBuster: Phantom launched successfully', [
-                'phantom_id' => $phantomId,
-                'container_id' => $containerId,
-                'response_keys' => array_keys($data),
-                'has_data_key' => isset($data['data']),
-                'data_keys' => isset($data['data']) && is_array($data['data']) ? array_keys($data['data']) : []
-            ]);
+            // Log removed to reduce verbosity - only log errors
             
             // Add containerId to response if we found it
             if ($containerId) {
@@ -2130,12 +2117,7 @@ class PhantomBusterService
         
         $lock = Cache::lock($lockKey, $lockDuration);
         
-        Log::info('PhantomBuster: Attempting to acquire per-agent lock for entire operation', [
-            'phantom_id' => $phantomId,
-            'lock_key' => $lockKey,
-            'lock_timeout' => $lockTimeout,
-            'max_wait_seconds' => $maxWaitSeconds
-        ]);
+        // Log removed to reduce verbosity - only log lock failures
         
         // Acquire the lock, blocking up to $lockTimeout seconds
         $acquired = $lock->block($lockTimeout);
@@ -2218,11 +2200,7 @@ class PhantomBusterService
 
             sleep(5);
             
-            Log::info('PhantomBuster: Starting to poll for profile data', [
-                'container_id' => $containerId,
-                'max_wait_seconds' => $maxWaitSeconds,
-                'poll_interval_seconds' => $pollIntervalSeconds
-            ]);
+            // Log removed to reduce verbosity - only log errors
 
             $startTime = time();
             $attempts = 0;
@@ -2340,10 +2318,7 @@ class PhantomBusterService
             // Lock must be held for entire operation (launch + polling)
             if ($acquired) {
                 $lock->release();
-                Log::info('PhantomBuster: Released per-agent lock after operation completion', [
-                    'phantom_id' => $phantomId,
-                    'lock_key' => $lockKey
-                ]);
+                // Log removed to reduce verbosity
             }
         }
     }
@@ -2450,12 +2425,7 @@ class PhantomBusterService
             // Wait longer for batch processing to start
             sleep(10);
             
-            Log::info('PhantomBuster: Starting to poll for batch profile data', [
-                'container_id' => $containerId,
-                'max_wait_seconds' => $maxWaitSeconds,
-                'poll_interval_seconds' => $pollIntervalSeconds,
-                'profile_count' => $profileCount
-            ]);
+            // Log removed to reduce verbosity - only log errors
 
             $startTime = time();
             $attempts = 0;

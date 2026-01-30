@@ -203,16 +203,13 @@ class FetchAudienceEmailJob implements ShouldQueue
                 }
             }
 
-            // Log what we found for debugging
-            Log::info('FetchAudienceEmailJob: Email extraction result', [
-                'audience_list_id' => $this->audienceListItemId,
-                'profile_url' => $profileUrl,
-                'email_found' => !empty($email),
-                'email_value' => $email ? substr($email, 0, 50) . '...' : null,
-                'professionalEmail_value' => isset($profileData['professionalEmail']) ? (is_string($profileData['professionalEmail']) ? substr($profileData['professionalEmail'], 0, 50) : gettype($profileData['professionalEmail'])) : 'not_set',
-                'professionalEmail_empty' => isset($profileData['professionalEmail']) && empty(trim($profileData['professionalEmail'] ?? '')),
-                'profile_data_keys' => array_keys($profileData)
-            ]);
+            // Simplified log - only log if email not found for debugging
+            if (empty($email)) {
+                Log::info('FetchAudienceEmailJob: Email extraction result - no email found', [
+                    'audience_list_id' => $this->audienceListItemId,
+                    'profile_url' => $profileUrl
+                ]);
+            }
 
             if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $audienceListItem->update([
@@ -244,10 +241,7 @@ class FetchAudienceEmailJob implements ShouldQueue
             // Update daily count (increment by 1 for this single profile scrape)
             $user->increment('daily_profile_email_scraping_count', 1);
             
-            Log::info('FetchAudienceEmailJob: Daily count updated', [
-                'user_id' => $user->id,
-                'new_count' => $user->fresh()->daily_profile_email_scraping_count
-            ]);
+            // Log removed to reduce verbosity
         } catch (\Throwable $th) {
             $audienceListItem = AudienceList::find($this->audienceListItemId);
             

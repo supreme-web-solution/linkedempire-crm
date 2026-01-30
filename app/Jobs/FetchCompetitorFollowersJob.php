@@ -16,6 +16,13 @@ class FetchCompetitorFollowersJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The number of seconds the job can run before timing out.
+     * Set to 15 minutes (900 seconds) to allow for PhantomBuster operations
+     * which can take up to 10 minutes (600 seconds) plus processing time.
+     */
+    public int $timeout = 900;
+
     public int $userId;
     public int $audiencePkId;
     public string $companyUrl;
@@ -236,28 +243,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             ?? $follower['network_distance']
             ?? null;
 
-        // Log what PhantomBuster returned
-        Log::info('📊 POST-SCRAPING AUDIENCE: PhantomBuster response data', [
-            'public_id' => $publicId,
-            'full_name' => $fullName,
-            'connectionDegree' => $connectionDegree,
-            'connectionDegree_source' => isset($follower['connectionDegree']) ? 'connectionDegree' : 
-                                        (isset($follower['connection_degree']) ? 'connection_degree' : 
-                                        (isset($follower['degree']) ? 'degree' : 
-                                        (isset($follower['networkDistance']) ? 'networkDistance' : 
-                                        (isset($follower['network_distance']) ? 'network_distance' : 'not_found')))),
-            'profileLink_received' => $follower['profileLink'] ?? null,
-            'profileUrl_extracted' => $profileUrl,
-            'all_follower_keys' => array_keys($follower),
-            'sample_follower_data' => [
-                'firstName' => $first,
-                'lastName' => $last,
-                'jobTitle' => $jobTitle,
-                'company' => $companyName,
-                'location' => $location,
-                'profileUrl' => $profileUrl
-            ]
-        ]);
+        // Log removed to reduce verbosity - only log errors or important issues
 
         // Convert connection degree to distance format (1, 2, 3 or DISTANCE_1, DISTANCE_2, DISTANCE_3)
         $con_distance = null;
@@ -295,28 +281,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             ]
         );
 
-        // Log what was saved to database
-        Log::info('💾 POST-SCRAPING AUDIENCE: Saved to audience_lists table from PhantomBuster', [
-            'id' => $savedItem->id,
-            'audience_id' => $audience->audience_id,
-            'public_id' => $publicId,
-            'name' => $fullName,
-            'connectionDegree_received' => $connectionDegree,
-            'con_distance_saved' => $savedItem->con_distance,
-            'con_distance_was_null' => $savedItem->con_distance === null,
-            'profile_url_saved' => $savedItem->con_profile_url,
-            'profile_url_was_null' => $savedItem->con_profile_url === null,
-            'all_saved_fields' => [
-                'con_first_name' => $savedItem->con_first_name,
-                'con_last_name' => $savedItem->con_last_name,
-                'con_public_identifier' => $savedItem->con_public_identifier,
-                'con_profile_url' => $savedItem->con_profile_url,
-                'con_job_title' => $savedItem->con_job_title,
-                'con_company_name' => $savedItem->con_company_name,
-                'con_location' => $savedItem->con_location,
-                'con_distance' => $savedItem->con_distance
-            ]
-        ]);
+        // Log removed to reduce verbosity - only log errors
 
         if ($publicId) {
             $seen[$publicId] = true;
@@ -350,22 +315,8 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                             ->onQueue('phantombuster');
                         $this->emailDispatchCount++;
                         
-                        Log::info('FetchCompetitorFollowersJob: Dispatched email fetch job', [
-                            'audience_list_id' => $savedItem->id,
-                            'public_identifier' => $publicId,
-                            'dispatched_count' => $this->emailDispatchCount,
-                            'max_per_job' => 5
-                        ]);
-                    } else {
-                        Log::info('FetchCompetitorFollowersJob: Reached max email dispatch limit (5) for this job', [
-                            'audience_list_id' => $savedItem->id
-                        ]);
+                        // Log removed to reduce verbosity
                     }
-                } else {
-                    Log::info('FetchCompetitorFollowersJob: User daily limit reached, skipping email dispatch', [
-                        'user_id' => $this->userId,
-                        'count' => $user->daily_profile_email_scraping_count
-                    ]);
                 }
             }
         }
