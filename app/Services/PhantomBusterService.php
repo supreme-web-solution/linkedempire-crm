@@ -107,6 +107,24 @@ class PhantomBusterService
                 $errorBody = $response->json();
                 $errorMessage = is_array($errorBody) ? ($errorBody['error'] ?? json_encode($errorBody)) : $response->body();
                 
+                // Handle payment/limit errors (402) - monthly execution time limit reached
+                if ($status === 402) {
+                    $helpfulError = "PhantomBuster monthly execution time limit reached (402). ";
+                    $helpfulError .= "This key has no remaining monthly execution time. ";
+                    $helpfulError .= "Please upgrade your PhantomBuster plan or wait for the monthly reset. ";
+                    $helpfulError .= "Original error: {$errorMessage}";
+                    
+                    Log::error("PhantomBuster launch failed - Monthly limit reached (402)", [
+                        'status' => $status,
+                        'body' => $errorBody,
+                        'phantom_id' => $phantomId,
+                        'api_key_used' => substr($keyToUse, 0, 10) . '...',
+                        'note' => 'This key has exhausted its monthly execution time. Consider using a different key or upgrading the plan.'
+                    ]);
+                    
+                    throw new \Exception($helpfulError);
+                }
+                
                 // Handle rate limiting (429) - parallel execution limit
                 if ($status === 429) {
                     $detailedError = is_array($errorBody) && isset($errorBody['details']['detailedErrorSlug']) 
@@ -776,12 +794,28 @@ class PhantomBusterService
                     $isAlreadyScraped = str_contains($errorMsg, 'already scraped') || 
                                        str_contains($errorMsg, 'input is empty');
                     
+                    // Check if it's a 402 error (monthly limit) - this key is exhausted
+                    $is402Error = str_contains($errorMsg, '402') || 
+                                 str_contains($errorMsg, 'monthly execution time') ||
+                                 str_contains($errorMsg, 'No monthly execution time');
+                    
                     Log::warning('PhantomBuster: Failed to get likers for post', [
                         'post_url' => $postUrl,
                         'error' => $errorMsg,
                         'already_scraped' => $isAlreadyScraped,
-                        'error_type' => get_class($e)
+                        'is_402_error' => $is402Error,
+                        'error_type' => get_class($e),
+                        'note' => $is402Error ? 'This key has exhausted its monthly execution time. The key will be released and other keys can be tried.' : null
                     ]);
+                    
+                    // If it's a 402 error (monthly limit), log it prominently
+                    if ($is402Error) {
+                        Log::error('❌ PhantomBuster: Key exhausted monthly execution time (402)', [
+                            'post_url' => $postUrl,
+                            'error' => $errorMsg,
+                            'note' => 'This PhantomBuster key has no remaining monthly execution time. The key will be released and other keys can be tried for future requests.'
+                        ]);
+                    }
                     
                     // If it's a 429 error (rate limit), wait a bit before continuing
                     if (str_contains($errorMsg, '429') || str_contains($errorMsg, 'parallel')) {

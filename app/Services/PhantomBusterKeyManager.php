@@ -105,6 +105,45 @@ class PhantomBusterKeyManager
                 // Try to acquire lock (non-blocking first attempt)
                 $acquired = $lock->get();
                 
+                // If lock couldn't be acquired and we've tried all keys, check if it's stuck
+                // After trying all keys once and waiting 30 seconds, try to clear stuck locks
+                if (!$acquired && $attempts > count($this->apiKeys) && (time() - $startTime) > 30) {
+                    Log::warning('⚠️ PhantomBusterKeyManager: Lock may be stuck, attempting to clear', [
+                        'key_index' => $keyIndex,
+                        'lock_key' => $lockKey,
+                        'attempts' => $attempts,
+                        'wait_time' => time() - $startTime,
+                        'note' => 'Lock exists but may be from a dead process. Will try to force clear.'
+                    ]);
+                    
+                    // Try to force clear the potentially stuck lock
+                    try {
+                        Cache::forget($lockKey);
+                        Log::info('✅ PhantomBusterKeyManager: Cleared potentially stuck lock', [
+                            'key_index' => $keyIndex,
+                            'lock_key' => $lockKey,
+                            'wait_time' => time() - $startTime
+                        ]);
+                        
+                        // Try to acquire again after clearing
+                        $lock = Cache::lock($lockKey, $this->lockDuration);
+                        $acquired = $lock->get();
+                        
+                        if ($acquired) {
+                            Log::info('✅ PhantomBusterKeyManager: Successfully acquired key after clearing stuck lock', [
+                                'key_index' => $keyIndex,
+                                'phantom_id' => $phantomId,
+                                'wait_time' => time() - $startTime
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('❌ PhantomBusterKeyManager: Failed to clear stuck lock', [
+                            'key_index' => $keyIndex,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
                 if ($acquired) {
                     Log::info('✅ PhantomBusterKeyManager: Acquired key pair', [
                         'operation_type' => $operationType,
