@@ -8,29 +8,19 @@ use Illuminate\Support\Facades\Cache;
 
 class PhantomBusterService
 {
-    private string $apiKey; // Legacy - kept for backward compatibility
+    private string $apiKey;
     private string $apiUrl;
     private ?string $sessionCookieOverride = null;
     private ?string $userAgentOverride = null;
-    private ?PhantomBusterKeyManager $keyManager = null;
 
     public function __construct()
     {
         $this->apiKey = config('services.phantombuster.api_key');
         $this->apiUrl = config('services.phantombuster.api_url', 'https://api.phantombuster.com/api/v1');
 
-        // Initialize key manager for multi-workspace support
-        try {
-            $this->keyManager = new PhantomBusterKeyManager();
-        } catch (\Exception $e) {
-            Log::warning('PhantomBusterService: Key manager initialization failed, falling back to single key', [
-                'error' => $e->getMessage()
-            ]);
-            // Fall back to single key mode
-            if (!$this->apiKey) {
-                Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
-                throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
-            }
+        if (!$this->apiKey) {
+            Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
+            throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
         }
     }
 
@@ -39,18 +29,12 @@ class PhantomBusterService
      *
      * @param string $phantomId The Phantom ID to launch
      * @param array $arguments Arguments to pass to the Phantom
-     * @param string|null $apiKey Optional API key to use (for key rotation)
      * @return array Response with containerId
      */
-    public function launchPhantom(string $phantomId, array $arguments = [], ?string $apiKey = null): array
+    public function launchPhantom(string $phantomId, array $arguments = []): array
     {
-        // Use provided API key or fall back to default
-        $keyToUse = $apiKey ?? $this->apiKey;
-        
-        if (!$keyToUse) {
-            throw new \Exception("No API key available for PhantomBuster launch");
-        }
-        
+        // Note: Lock management is handled at a higher level (in scrapeLinkedInProfile, etc.)
+        // This method just performs the API call without locking
         $url = "{$this->apiUrl}/agent/{$phantomId}/launch";
 
         $payload = [];
@@ -58,11 +42,13 @@ class PhantomBusterService
             $payload['argument'] = $arguments;
         }
 
+        // Log removed to reduce verbosity - only log errors
+
         try {
                 $response = Http::timeout(30) // 30 seconds timeout
                     ->connectTimeout(15) // 15 seconds for DNS/connection
                     ->withHeaders([
-                        'X-Phantombuster-Key-1' => $keyToUse,
+                        'X-Phantombuster-Key-1' => $this->apiKey,
                         'Content-Type' => 'application/json'
                     ])->post($url, $payload);
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
@@ -106,24 +92,6 @@ class PhantomBusterService
                 $status = $response->status();
                 $errorBody = $response->json();
                 $errorMessage = is_array($errorBody) ? ($errorBody['error'] ?? json_encode($errorBody)) : $response->body();
-                
-                // Handle payment/limit errors (402) - monthly execution time limit reached
-                if ($status === 402) {
-                    $helpfulError = "PhantomBuster monthly execution time limit reached (402). ";
-                    $helpfulError .= "This key has no remaining monthly execution time. ";
-                    $helpfulError .= "Please upgrade your PhantomBuster plan or wait for the monthly reset. ";
-                    $helpfulError .= "Original error: {$errorMessage}";
-                    
-                    Log::error("PhantomBuster launch failed - Monthly limit reached (402)", [
-                        'status' => $status,
-                        'body' => $errorBody,
-                        'phantom_id' => $phantomId,
-                        'api_key_used' => substr($keyToUse, 0, 10) . '...',
-                        'note' => 'This key has exhausted its monthly execution time. Consider using a different key or upgrading the plan.'
-                    ]);
-                    
-                    throw new \Exception($helpfulError);
-                }
                 
                 // Handle rate limiting (429) - parallel execution limit
                 if ($status === 429) {
@@ -221,18 +189,15 @@ class PhantomBusterService
      * @param string $containerId The container ID from launch response
      * @return array Output data
      */
-    public function getPhantomOutput(string $phantomId, string $containerId, ?string $apiKey = null): array
+    public function getPhantomOutput(string $phantomId, string $containerId): array
     {
         $url = "{$this->apiUrl}/agent/{$phantomId}/output";
-        
-        // Use provided API key or fall back to default
-        $keyToUse = $apiKey ?? $this->apiKey;
 
         try {
             $response = Http::timeout(30) // 30 seconds timeout
                 ->connectTimeout(15) // 15 seconds for DNS/connection
                 ->withHeaders([
-                    'X-Phantombuster-Key-1' => $keyToUse
+                    'X-Phantombuster-Key-1' => $this->apiKey
                 ])->get($url, [
                     'containerId' => $containerId
                 ]);
@@ -649,28 +614,14 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
         try {
-            Log::info('🔄 PhantomBuster: Starting to fetch company post engagers', [
-                'company_url' => $companyUrl,
-                'timestamp' => now()->toIso8601String(),
-                'note' => 'This will acquire a key when calling fetchPostLikers'
+            Log::info('PhantomBuster: Starting to fetch company post engagers', [
+                'company_url' => $companyUrl
             ]);
 
             // Step 1: Get company posts using RapidAPI - sort by "top" for highest engagement
-            Log::info('🔄 PhantomBuster: Fetching company posts from RapidAPI', [
-                'company_url' => $companyUrl,
-                'timestamp' => now()->toIso8601String()
-            ]);
-            
             $rapidApiService = new \App\Services\RapidApiService();
             // Try "top" first for highest engagement posts, fallback to "recent" if not supported
             $posts = $rapidApiService->fetch_company_posts($companyUrl, 1, 'top');
-            
-            Log::info('✅ PhantomBuster: RapidAPI returned posts', [
-                'company_url' => $companyUrl,
-                'has_posts' => !empty($posts),
-                'posts_count' => isset($posts['data']) ? count($posts['data']) : 0,
-                'timestamp' => now()->toIso8601String()
-            ]);
             
             if (empty($posts) || !isset($posts['data']) || empty($posts['data'])) {
                 Log::warning('PhantomBuster: No posts found for company', ['company_url' => $companyUrl]);
@@ -729,8 +680,7 @@ class PhantomBusterService
                 'total_posts_available' => count($postUrls),
                 'max_attempts' => $maxAttempts,
                 'target_successful_posts' => $maxSuccessfulPosts,
-                'note' => 'Will skip already-scraped posts and continue until finding unscraped ones.',
-                'timestamp' => now()->toIso8601String()
+                'note' => 'Will skip already-scraped posts and continue until finding unscraped ones.'
             ]);
 
             $allEngagers = [];
@@ -739,13 +689,6 @@ class PhantomBusterService
             $successfulPosts = 0;
             $postIndex = 0;
             $newlyScrapedPostUrls = []; // Track newly scraped posts to return
-            
-            Log::info('🔄 PhantomBuster: About to start processing posts loop', [
-                'company_url' => $companyUrl,
-                'posts_to_process' => count($postUrls),
-                'max_attempts' => $maxAttempts,
-                'note' => 'First call to fetchPostLikers will acquire a key'
-            ]);
             
             // Process posts until we find enough unscraped ones or hit max attempts
             while ($postIndex < count($postUrls) && $processedPosts < $maxAttempts) {
@@ -758,28 +701,15 @@ class PhantomBusterService
                     'total_available' => count($postUrls),
                     'successful_so_far' => $successfulPosts,
                     'skipped_so_far' => $skippedPosts,
-                    'post_url' => $postUrl,
-                    'timestamp' => now()->toIso8601String()
+                    'post_url' => $postUrl
                 ]);
 
                 $postEngagers = 0;
                 $likersFailed = false;
 
                 try {
-                    // Get likers for this post (this will acquire a key pair)
-                    Log::info('🔄 PhantomBuster: About to fetch post likers (will acquire key)', [
-                        'post_url' => $postUrl,
-                        'post_number' => $processedPosts,
-                        'company_url' => $companyUrl
-                    ]);
-                    
+                    // Get likers for this post
                     $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
-                    
-                    Log::info('✅ PhantomBuster: Post likers fetched successfully', [
-                        'post_url' => $postUrl,
-                        'likers_count' => is_array($likers) ? count($likers) : 0,
-                        'post_number' => $processedPosts
-                    ]);
                     
                     // Ensure we only merge arrays (filter out any non-array items)
                     $validLikers = array_filter($likers, function($liker) {
@@ -794,28 +724,12 @@ class PhantomBusterService
                     $isAlreadyScraped = str_contains($errorMsg, 'already scraped') || 
                                        str_contains($errorMsg, 'input is empty');
                     
-                    // Check if it's a 402 error (monthly limit) - this key is exhausted
-                    $is402Error = str_contains($errorMsg, '402') || 
-                                 str_contains($errorMsg, 'monthly execution time') ||
-                                 str_contains($errorMsg, 'No monthly execution time');
-                    
                     Log::warning('PhantomBuster: Failed to get likers for post', [
                         'post_url' => $postUrl,
                         'error' => $errorMsg,
                         'already_scraped' => $isAlreadyScraped,
-                        'is_402_error' => $is402Error,
-                        'error_type' => get_class($e),
-                        'note' => $is402Error ? 'This key has exhausted its monthly execution time. The key will be released and other keys can be tried.' : null
+                        'error_type' => get_class($e)
                     ]);
-                    
-                    // If it's a 402 error (monthly limit), log it prominently
-                    if ($is402Error) {
-                        Log::error('❌ PhantomBuster: Key exhausted monthly execution time (402)', [
-                            'post_url' => $postUrl,
-                            'error' => $errorMsg,
-                            'note' => 'This PhantomBuster key has no remaining monthly execution time. The key will be released and other keys can be tried for future requests.'
-                        ]);
-                    }
                     
                     // If it's a 429 error (rate limit), wait a bit before continuing
                     if (str_contains($errorMsg, '429') || str_contains($errorMsg, 'parallel')) {
@@ -1181,7 +1095,7 @@ class PhantomBusterService
                         sleep($pollIntervalSeconds);
                     }
 
-                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
+                    $output = $this->getPhantomOutput($phantomId, $containerId);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         if ($last404Time === null) {
@@ -1574,36 +1488,11 @@ class PhantomBusterService
         int $maxWaitSeconds = 300,
         int $pollIntervalSeconds = 10
     ): array {
-        // Acquire key pair using key manager (supports multiple workspaces)
-        $keyPair = null;
-        if ($this->keyManager) {
-            try {
-                Log::info('🔑 PhantomBuster: Acquiring key pair for post likers', [
-                    'post_url' => $postUrl
-                ]);
-                $keyPair = $this->keyManager->acquireKeyPair('post_likers');
-                $phantomId = $keyPair['phantom_id'];
-                $apiKey = $keyPair['api_key'];
-                Log::info('✅ PhantomBuster: Key pair acquired for post likers', [
-                    'post_url' => $postUrl,
-                    'key_index' => $keyPair['key_index'],
-                    'phantom_id' => $phantomId
-                ]);
-            } catch (\Exception $e) {
-                Log::error('❌ PhantomBuster: Failed to acquire key pair for post likers', [
-                    'post_url' => $postUrl,
-                    'error' => $e->getMessage()
-                ]);
-                throw $e;
-            }
-        } else {
-            // Fallback to single key mode
-            $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
-            if (!$phantomId) {
-                Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-                throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-            }
-            $apiKey = null; // Will use default
+        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
+        
+        if (!$phantomId) {
+            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
         }
 
         $arguments = [
@@ -1621,24 +1510,23 @@ class PhantomBusterService
             $arguments['userAgent'] = $userAgent;
         }
 
-        try {
-            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
-            $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
-            
-            if (!$containerId) {
-                throw new \Exception("Failed to get container ID from PhantomBuster launch for post likers");
-            }
+        $launchResponse = $this->launchPhantom($phantomId, $arguments);
+        $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
+        
+        if (!$containerId) {
+            throw new \Exception("Failed to get container ID from PhantomBuster launch for post likers");
+        }
 
-            // Wait a bit before first poll to allow container to initialize
-            // PhantomBuster containers need time to start up
-            sleep(5);
+        // Wait a bit before first poll to allow container to initialize
+        // PhantomBuster containers need time to start up
+        sleep(5);
 
-            // Poll for completion
-            $startTime = time();
-            $attempts = 0;
-            $last404Time = null;
-            
-            while (time() - $startTime < $maxWaitSeconds) {
+        // Poll for completion
+        $startTime = time();
+        $attempts = 0;
+        $last404Time = null;
+        
+        while (time() - $startTime < $maxWaitSeconds) {
             $attempts++;
             
             try {
@@ -1647,7 +1535,7 @@ class PhantomBusterService
                     sleep($pollIntervalSeconds);
                 }
 
-                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
+                $output = $this->getPhantomOutput($phantomId, $containerId);
             } catch (\Exception $e) {
                 // Handle 404 errors gracefully - container might not be ready yet
                 if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
@@ -1740,7 +1628,6 @@ class PhantomBusterService
             
             if (is_array($likers) && !empty($likers)) {
                 Log::info('PhantomBuster: Got likers data', ['count' => count($likers)]);
-                // Lock will be released in finally block
                 return $likers;
             }
             
@@ -1867,7 +1754,6 @@ class PhantomBusterService
                                             $jsonError = json_last_error();
                                             
                                             if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
-                                                // Lock will be released in finally block
                                                 return $likersData;
                                             } else {
                                                 Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty', [
@@ -1929,7 +1815,6 @@ class PhantomBusterService
                                             }
                                             
                                             if (!empty($likersData)) {
-                                                // Lock will be released in finally block
                                                 return $likersData;
                                             }
                                         } else {
@@ -2178,7 +2063,6 @@ class PhantomBusterService
                         } else {
                             // It's actual data!
                             Log::info('PhantomBuster: Found likers in output array', ['count' => count($outputArray)]);
-                            // Lock will be released in finally block
                             return $outputArray;
                         }
                     }
@@ -2231,25 +2115,14 @@ class PhantomBusterService
             $errorNote = 'LinkedIn session cookie (li_at) appears to be expired. Please refresh it from the Social Accounts page.';
         }
         
-            Log::error('PhantomBuster: Timeout or no data for post likers', [
-                'post_url' => $postUrl,
-                'waited_seconds' => time() - $startTime,
-                'max_wait_seconds' => $maxWaitSeconds,
-                'note' => $errorNote,
-                'error_message' => $errorMessage ?? null
-            ]);
-            
-            return [];
-        } finally {
-            // Always release lock, even on exception or early return
-            if ($keyPair && $this->keyManager) {
-                $this->keyManager->releaseKeyPair($keyPair);
-                Log::info('🔓 PhantomBuster: Released key pair lock (finally block)', [
-                    'post_url' => $postUrl,
-                    'key_index' => $keyPair['key_index'] ?? 'unknown'
-                ]);
-            }
-        }
+        Log::error('PhantomBuster: Timeout or no data for post likers', [
+            'post_url' => $postUrl,
+            'waited_seconds' => time() - $startTime,
+            'max_wait_seconds' => $maxWaitSeconds,
+            'note' => $errorNote,
+            'error_message' => $errorMessage ?? null
+        ]);
+        return [];
     }
 
     /**
@@ -2312,7 +2185,7 @@ class PhantomBusterService
                     sleep($pollIntervalSeconds);
                 }
 
-                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
+                $output = $this->getPhantomOutput($phantomId, $containerId);
             } catch (\Exception $e) {
                 if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                     if ($last404Time === null) {
@@ -2517,36 +2390,39 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        // Acquire key pair using key manager (supports multiple workspaces)
-        $keyPair = null;
-        if ($this->keyManager) {
-            try {
-                Log::info('🔑 PhantomBuster: Acquiring key pair for profile scraper', [
-                    'profile_url' => $profileUrl
-                ]);
-                $keyPair = $this->keyManager->acquireKeyPair('profile_scraper');
-                $phantomId = $keyPair['phantom_id'];
-                $apiKey = $keyPair['api_key'];
-                Log::info('✅ PhantomBuster: Key pair acquired for profile scraper', [
-                    'profile_url' => $profileUrl,
-                    'key_index' => $keyPair['key_index'],
-                    'phantom_id' => $phantomId
-                ]);
-            } catch (\Exception $e) {
-                Log::error('❌ PhantomBuster: Failed to acquire key pair for profile scraper', [
-                    'profile_url' => $profileUrl,
-                    'error' => $e->getMessage()
-                ]);
-                throw $e;
-            }
-        } else {
-            // Fallback to single key mode
-            $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
-            if (!$phantomId) {
-                Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
-                throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
-            }
-            $apiKey = null; // Will use default
+        $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+        
+        if (!$phantomId) {
+            Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
+            throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
+        }
+
+        // Per-agent lock to ensure only one instance of each agent runs at a time
+        // PhantomBuster API only allows 1 parallel execution per agent
+        // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
+        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
+        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
+        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
+        
+        $lock = Cache::lock($lockKey, $lockDuration);
+        
+        // Log removed to reduce verbosity - only log lock failures
+        
+        // Acquire the lock, blocking up to $lockTimeout seconds
+        $acquired = $lock->block($lockTimeout);
+        
+        if (!$acquired) {
+            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
+                'phantom_id' => $phantomId,
+                'lock_key' => $lockKey,
+                'timeout_seconds' => $lockTimeout,
+                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
+            ]);
+            throw new \Exception(
+                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
+                "This job will be reset so you can try again. " .
+                "Each agent allows only 1 parallel execution at a time."
+            );
         }
 
         try {
@@ -2604,7 +2480,7 @@ class PhantomBusterService
             }
 
 
-            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey ?? null);
+            $launchResponse = $this->launchPhantom($phantomId, $arguments);
             $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
 
             if (!$containerId) {
@@ -2634,7 +2510,7 @@ class PhantomBusterService
                 }
 
                 try {
-                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
+                    $output = $this->getPhantomOutput($phantomId, $containerId);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         continue;
@@ -2727,13 +2603,11 @@ class PhantomBusterService
             ]);
             throw $th;
         } finally {
-            // Always release key pair lock, even if an exception was thrown
-            if ($keyPair && $this->keyManager) {
-                $this->keyManager->releaseKeyPair($keyPair);
-                Log::info('🔓 PhantomBuster: Released key pair lock for profile scraper (finally block)', [
-                    'profile_url' => $profileUrl,
-                    'key_index' => $keyPair['key_index'] ?? 'unknown'
-                ]);
+            // Always release the lock, even if an exception was thrown
+            // Lock must be held for entire operation (launch + polling)
+            if ($acquired) {
+                $lock->release();
+                // Log removed to reduce verbosity
             }
         }
     }
@@ -2855,7 +2729,7 @@ class PhantomBusterService
                 }
 
                 try {
-                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
+                    $output = $this->getPhantomOutput($phantomId, $containerId);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         continue;

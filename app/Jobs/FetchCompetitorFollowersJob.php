@@ -85,13 +85,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             // Update status: fetching engagers
             $this->updateFetchStatus($audience, 'processing', 'Scraping post engagers from PhantomBuster...');
             
-            Log::info('🔄 FetchCompetitorFollowersJob: About to call fetchCompanyPostEngagers', [
-                'audience_id' => $audience->audience_id,
-                'company_url' => $this->companyUrl,
-                'job_id' => $this->job->getJobId() ?? 'unknown',
-                'note' => 'Key will be acquired when fetchPostLikers is called inside'
-            ]);
-            
             // Fetch company post engagers (people who liked company posts)
             // This doesn't require admin access and works for any company
             // Pass scraped post URLs to skip them
@@ -105,14 +98,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 $scrapedPostUrls, // Pass already-scraped posts
                 $audience // Pass audience to update source_meta with newly scraped posts
             );
-            
-            Log::info('✅ FetchCompetitorFollowersJob: fetchCompanyPostEngagers completed', [
-                'audience_id' => $audience->audience_id,
-                'company_url' => $this->companyUrl,
-                'result_type' => gettype($result),
-                'has_engagers' => isset($result['engagers']),
-                'engagers_count' => isset($result['engagers']) ? count($result['engagers']) : 0
-            ]);
             
             $followers = $result['engagers'] ?? $result;
             $newlyScrapedPosts = $result['newly_scraped_posts'] ?? [];
