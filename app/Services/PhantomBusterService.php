@@ -9,97 +9,123 @@ use Illuminate\Support\Facades\Cache;
 class PhantomBusterService
 {
     private string $apiKey;
+    private array $apiKeys;
     private string $apiUrl;
     private ?string $sessionCookieOverride = null;
     private ?string $userAgentOverride = null;
-    private ?PhantomBusterWorkspaceManager $workspaceManager = null;
-    private ?array $currentWorkspace = null; // ['workspace' => [...], 'lock' => Lock, 'lock_key' => '...']
-    private bool $ownsWorkspace = false; // Track if we acquired the workspace in this instance
+    private ?string $currentApiKey = null; // Key currently in use for this operation
+    private ?string $currentLockKey = null; // Lock key for the current operation
 
     public function __construct()
     {
-        $this->apiKey = config('services.phantombuster.api_key');
+        $this->apiKeys = config('services.phantombuster.api_keys', []);
+        $this->apiKey = config('services.phantombuster.api_key'); // Fallback to single key
         $this->apiUrl = config('services.phantombuster.api_url', 'https://api.phantombuster.com/api/v1');
-        $this->workspaceManager = new PhantomBusterWorkspaceManager();
 
-        // Use workspace manager if multi-workspace is enabled, otherwise use single API key
-        if ($this->workspaceManager->isMultiWorkspaceEnabled()) {
-            // Will acquire workspace when needed
-        } else {
-            if (!$this->apiKey) {
-                Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
-                throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
+        // If no multiple keys configured, use single key
+        if (empty($this->apiKeys) && $this->apiKey) {
+            $this->apiKeys = [$this->apiKey];
+        }
+
+        if (empty($this->apiKeys)) {
+            Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
+            throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
+        }
+    }
+
+    /**
+     * Acquire an available API key with lock
+     * Waits up to $maxWaitSeconds for a key to become available
+     * 
+     * @param int $maxWaitSeconds Maximum seconds to wait for a key
+     * @param int $lockTimeoutSeconds Lock timeout (how long the key is reserved)
+     * @return string The acquired API key
+     * @throws \Exception If no key is available after waiting
+     */
+    private function acquireApiKey(int $maxWaitSeconds = 300, int $lockTimeoutSeconds = 900): string
+    {
+        $startTime = time();
+        $attempts = 0;
+
+        while (time() - $startTime < $maxWaitSeconds) {
+            $attempts++;
+            
+            // Try each key in order
+            foreach ($this->apiKeys as $index => $key) {
+                $lockKey = "phantombuster_key_lock_{$index}";
+                
+                // Try to acquire lock (non-blocking)
+                $lock = Cache::lock($lockKey, $lockTimeoutSeconds);
+                
+                if ($lock->get()) {
+                    $this->currentApiKey = $key;
+                    $this->currentLockKey = $lockKey;
+                    
+                    Log::info('🔑 PhantomBuster: Acquired API key', [
+                        'key_index' => $index,
+                        'total_keys' => count($this->apiKeys),
+                        'wait_time_seconds' => time() - $startTime,
+                        'attempts' => $attempts
+                    ]);
+                    
+                    return $key;
+                }
             }
-        }
-    }
-
-    /**
-     * Acquire a workspace for this operation
-     * Must be called before making API calls when multi-workspace is enabled
-     */
-    private function ensureWorkspace(int $maxWaitSeconds = null): void
-    {
-        if ($this->currentWorkspace) {
-            return; // Already have a workspace
-        }
-
-        if ($this->workspaceManager->isMultiWorkspaceEnabled()) {
-            $workspaceData = $this->workspaceManager->acquireWorkspace($maxWaitSeconds);
             
-            if (!$workspaceData) {
-                throw new \Exception(
-                    "All PhantomBuster workspaces are currently busy. " .
-                    "Please wait a few minutes and try again. " .
-                    "We have {$this->workspaceManager->getWorkspaceCount()} workspace(s) available."
-                );
+            // All keys are in use, wait a bit before retrying
+            if ($attempts === 1) {
+                Log::info('⏳ PhantomBuster: All API keys in use, waiting for availability...', [
+                    'total_keys' => count($this->apiKeys),
+                    'max_wait_seconds' => $maxWaitSeconds
+                ]);
             }
             
-            $this->currentWorkspace = $workspaceData;
-            $this->apiKey = $workspaceData['workspace']['api_key'];
-            $this->ownsWorkspace = true;
+            sleep(2); // Wait 2 seconds before retrying
+        }
+
+        // No key available after waiting
+        throw new \Exception(
+            "All PhantomBuster API keys are currently in use. " .
+            "Please wait for running operations to complete. " .
+            "Configured keys: " . count($this->apiKeys)
+        );
+    }
+
+    /**
+     * Release the currently acquired API key lock
+     */
+    private function releaseApiKey(): void
+    {
+        if ($this->currentLockKey) {
+            $lock = Cache::lock($this->currentLockKey);
+            if ($lock->get()) {
+                $lock->release();
+                Log::info('🔓 PhantomBuster: Released API key lock', [
+                    'lock_key' => $this->currentLockKey
+                ]);
+            }
+            $this->currentLockKey = null;
+            $this->currentApiKey = null;
         }
     }
 
     /**
-     * Release the current workspace
+     * Execute a callback with an acquired API key
+     * Automatically acquires and releases the key
+     * 
+     * @param callable $callback Function to execute with the API key
+     * @param int $maxWaitSeconds Maximum seconds to wait for a key
+     * @return mixed Result from callback
      */
-    private function releaseWorkspace(): void
+    private function withApiKey(callable $callback, int $maxWaitSeconds = 300)
     {
-        if ($this->currentWorkspace && $this->ownsWorkspace) {
-            $this->workspaceManager->releaseWorkspace($this->currentWorkspace['lock']);
-            $this->currentWorkspace = null;
-            $this->ownsWorkspace = false;
-        }
-    }
-
-    /**
-     * Get phantom ID for current workspace
-     */
-    private function getPhantomId(string $type): ?string
-    {
-        if ($this->currentWorkspace) {
-            // Map type to workspace key
-            $keyMap = [
-                'post_likers' => 'linkedin_post_likers_phantom_id',
-                'post_comments' => 'linkedin_post_comments_phantom_id',
-                'search_export' => 'linkedin_search_export_phantom_id',
-                'profile_scraper' => 'linkedin_profile_scraper_phantom_id',
-            ];
-            
-            $key = $keyMap[$type] ?? "linkedin_{$type}_phantom_id";
-            return $this->currentWorkspace['workspace'][$key] ?? null;
-        }
+        $key = $this->acquireApiKey($maxWaitSeconds);
         
-        // Fallback to single workspace config
-        return config("services.phantombuster.linkedin_{$type}_phantom_id");
-    }
-
-    /**
-     * Cleanup workspace on destruction
-     */
-    public function __destruct()
-    {
-        $this->releaseWorkspace();
+        try {
+            return $callback($key);
+        } finally {
+            $this->releaseApiKey();
+        }
     }
 
     /**
@@ -109,10 +135,11 @@ class PhantomBusterService
      * @param array $arguments Arguments to pass to the Phantom
      * @return array Response with containerId
      */
-    public function launchPhantom(string $phantomId, array $arguments = []): array
+    public function launchPhantom(string $phantomId, array $arguments = [], ?string $apiKey = null): array
     {
-        // Note: Lock management is handled at a higher level (in scrapeLinkedInProfile, etc.)
-        // This method just performs the API call without locking
+        // Use provided key or current key (from withApiKey context)
+        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
+        
         $url = "{$this->apiUrl}/agent/{$phantomId}/launch";
 
         $payload = [];
@@ -120,13 +147,11 @@ class PhantomBusterService
             $payload['argument'] = $arguments;
         }
 
-        // Log removed to reduce verbosity - only log errors
-
         try {
                 $response = Http::timeout(30) // 30 seconds timeout
                     ->connectTimeout(15) // 15 seconds for DNS/connection
                     ->withHeaders([
-                        'X-Phantombuster-Key-1' => $this->apiKey,
+                        'X-Phantombuster-Key-1' => $keyToUse,
                         'Content-Type' => 'application/json'
                     ])->post($url, $payload);
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
@@ -267,15 +292,18 @@ class PhantomBusterService
      * @param string $containerId The container ID from launch response
      * @return array Output data
      */
-    public function getPhantomOutput(string $phantomId, string $containerId): array
+    public function getPhantomOutput(string $phantomId, string $containerId, ?string $apiKey = null): array
     {
+        // Use provided key or current key (from withApiKey context)
+        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
+        
         $url = "{$this->apiUrl}/agent/{$phantomId}/output";
 
         try {
             $response = Http::timeout(30) // 30 seconds timeout
                 ->connectTimeout(15) // 15 seconds for DNS/connection
                 ->withHeaders([
-                    'X-Phantombuster-Key-1' => $this->apiKey
+                    'X-Phantombuster-Key-1' => $keyToUse
                 ])->get($url, [
                     'containerId' => $containerId
                 ]);
@@ -384,11 +412,14 @@ class PhantomBusterService
      *
      * @return array List of phantoms with their IDs and names
      */
-    public function listPhantoms(): array
+    public function listPhantoms(?string $apiKey = null): array
     {
         // Note: This endpoint may not be available in all PhantomBuster API versions
         // It's better to configure phantom IDs directly in .env instead of using this
         $url = "{$this->apiUrl}/agents/fetch-all";
+        
+        // Use provided key or current key (from withApiKey context)
+        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
 
         Log::info('PhantomBuster: Fetching list of phantoms');
 
@@ -396,7 +427,7 @@ class PhantomBusterService
             $response = Http::timeout(30) // 30 seconds timeout
                 ->connectTimeout(15) // 15 seconds for DNS/connection
                 ->withHeaders([
-                    'X-Phantombuster-Key-1' => $this->apiKey
+                    'X-Phantombuster-Key-1' => $keyToUse
                 ])->get($url);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             $errorMessage = $e->getMessage();
@@ -689,12 +720,29 @@ class PhantomBusterService
         array $alreadyScrapedPostUrls = [],
         $audience = null
     ): array {
-        // Acquire workspace for this operation
-        $this->ensureWorkspace($maxWaitSeconds);
-        
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
         
+        // Use key rotation - acquire a key and use it for the entire operation
+        return $this->withApiKey(function($apiKey) use ($companyUrl, $phantomId, $maxWaitSeconds, $pollIntervalSeconds, $sessionCookie, $userAgent, $alreadyScrapedPostUrls, $audience) {
+            return $this->fetchCompanyPostEngagersInternal($companyUrl, $phantomId, $maxWaitSeconds, $pollIntervalSeconds, $sessionCookie, $userAgent, $alreadyScrapedPostUrls, $audience, $apiKey);
+        }, $maxWaitSeconds);
+    }
+    
+    /**
+     * Internal method that does the actual work (called with acquired API key)
+     */
+    private function fetchCompanyPostEngagersInternal(
+        string $companyUrl,
+        ?string $phantomId = null,
+        int $maxWaitSeconds = 600,
+        int $pollIntervalSeconds = 15,
+        ?string $sessionCookie = null,
+        ?string $userAgent = null,
+        array $alreadyScrapedPostUrls = [],
+        $audience = null,
+        string $apiKey = null
+    ): array {
         try {
             Log::info('PhantomBuster: Starting to fetch company post engagers', [
                 'company_url' => $companyUrl
@@ -725,7 +773,6 @@ class PhantomBusterService
             
             if (empty($allPostUrls)) {
                 Log::warning('PhantomBuster: No post URLs found in posts', ['company_url' => $companyUrl]);
-                $this->releaseWorkspace();
                 return ['engagers' => [], 'newly_scraped_posts' => []];
             }
             
@@ -750,7 +797,6 @@ class PhantomBusterService
                     'total_posts' => count($allPostUrls),
                     'already_scraped' => count($alreadyScrapedPostUrls)
                 ]);
-                $this->releaseWorkspace();
                 return ['engagers' => [], 'newly_scraped_posts' => []];
             }
 
@@ -793,7 +839,7 @@ class PhantomBusterService
 
                 try {
                     // Get likers for this post
-                    $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
+                    $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
                     
                     // Ensure we only merge arrays (filter out any non-array items)
                     $validLikers = array_filter($likers, function($liker) {
@@ -976,22 +1022,11 @@ class PhantomBusterService
             // Return both engagers and newly scraped posts for tracking
             // Note: Scraped posts are tracked per-user in the audience source_meta
             // This allows multiple users to attempt the same posts independently
-            $result = [
+            return [
                 'engagers' => $uniqueEngagers,
                 'newly_scraped_posts' => $newlyScrapedPostUrls ?? []
             ];
-            
-            // Release workspace before returning
-            $this->releaseWorkspace();
-            
-            return $result;
-        } catch (\Exception $e) {
-            // Release workspace on error
-            $this->releaseWorkspace();
-            throw $e;
         } finally {
-            // Release workspace in finally block to ensure it's always released
-            $this->releaseWorkspace();
             $this->sessionCookieOverride = null;
             $this->userAgentOverride = null;
         }
@@ -1018,12 +1053,15 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        try {
-            return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
-        } finally {
-            $this->sessionCookieOverride = null;
-            $this->userAgentOverride = null;
-        }
+        // Use key rotation - acquire a key and use it for the entire operation
+        return $this->withApiKey(function($apiKey) use ($postUrl, $maxWaitSeconds, $pollIntervalSeconds) {
+            try {
+                return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
+            } finally {
+                $this->sessionCookieOverride = null;
+                $this->userAgentOverride = null;
+            }
+        }, $maxWaitSeconds);
     }
 
     /**
@@ -1581,10 +1619,10 @@ class PhantomBusterService
     private function fetchPostLikers(
         string $postUrl,
         int $maxWaitSeconds = 300,
-        int $pollIntervalSeconds = 10
+        int $pollIntervalSeconds = 10,
+        ?string $apiKey = null
     ): array {
-        // Use workspace phantom ID if available, otherwise fallback to config
-        $phantomId = $this->getPhantomId('post_likers') ?? config('services.phantombuster.linkedin_post_likers_phantom_id');
+        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
         
         if (!$phantomId) {
             Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
@@ -1606,7 +1644,7 @@ class PhantomBusterService
             $arguments['userAgent'] = $userAgent;
         }
 
-        $launchResponse = $this->launchPhantom($phantomId, $arguments);
+        $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
         $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
         
         if (!$containerId) {
@@ -1631,7 +1669,7 @@ class PhantomBusterService
                     sleep($pollIntervalSeconds);
                 }
 
-                $output = $this->getPhantomOutput($phantomId, $containerId);
+                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey);
             } catch (\Exception $e) {
                 // Handle 404 errors gracefully - container might not be ready yet
                 if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
@@ -2483,21 +2521,35 @@ class PhantomBusterService
         int $maxWaitSeconds = 300,
         int $pollIntervalSeconds = 10
     ): array {
-        // Acquire workspace for this operation
-        $this->ensureWorkspace($maxWaitSeconds);
-        
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        // Use workspace phantom ID if available, otherwise fallback to config
-        $phantomId = $this->getPhantomId('profile_scraper') ?? config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+        $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
         
         if (!$phantomId) {
-            $this->releaseWorkspace();
             Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
             throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
         }
 
+        // Use key rotation - acquire a key and use it for the entire operation
+        return $this->withApiKey(function($apiKey) use ($profileUrl, $sessionCookie, $userAgent, $identities, $maxWaitSeconds, $pollIntervalSeconds, $phantomId) {
+            return $this->scrapeLinkedInProfileInternal($profileUrl, $sessionCookie, $userAgent, $identities, $maxWaitSeconds, $pollIntervalSeconds, $phantomId, $apiKey);
+        }, $maxWaitSeconds);
+    }
+    
+    /**
+     * Internal method that does the actual scraping (called with acquired API key)
+     */
+    private function scrapeLinkedInProfileInternal(
+        string $profileUrl,
+        ?string $sessionCookie,
+        ?string $userAgent,
+        ?array $identities,
+        int $maxWaitSeconds,
+        int $pollIntervalSeconds,
+        string $phantomId,
+        string $apiKey
+    ): array {
         // Per-agent lock to ensure only one instance of each agent runs at a time
         // PhantomBuster API only allows 1 parallel execution per agent
         // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
@@ -2581,7 +2633,7 @@ class PhantomBusterService
             }
 
 
-            $launchResponse = $this->launchPhantom($phantomId, $arguments);
+            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
             $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
 
             if (!$containerId) {
@@ -2611,7 +2663,7 @@ class PhantomBusterService
                 }
 
                 try {
-                    $output = $this->getPhantomOutput($phantomId, $containerId);
+                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         continue;
@@ -2684,25 +2736,19 @@ class PhantomBusterService
                 // Exit early if we have profile data, even if container is still running
                 // We'll check for email in the job itself
                 if ($profileData && !empty($profileData)) {
-                    $this->releaseWorkspace();
                     return $profileData;
                 }
 
                 if ($containerStatus === 'not running' || $containerStatus === 'finished' || $containerStatus === 'completed') {
                     if ($profileData) {
-                        $this->releaseWorkspace();
                         return $profileData;
                     }
                     break;
                 }
             }
 
-            $result = $profileData ?? [];
-            $this->releaseWorkspace();
-            return $result;
+            return $profileData ?? [];
         } catch (\Throwable $th) {
-            // Release workspace on error
-            $this->releaseWorkspace();
             Log::error('PhantomBuster: Failed to scrape profile', [
                 'profile_url' => $profileUrl,
                 'error' => $th->getMessage(),
@@ -2735,15 +2781,10 @@ class PhantomBusterService
         int $maxWaitSeconds = 600,
         int $pollIntervalSeconds = 15
     ): array {
-        // Acquire workspace for this operation
-        $this->ensureWorkspace($maxWaitSeconds);
-        
         try {
-            // Use workspace phantom ID if available, otherwise fallback to config
-            $phantomId = $this->getPhantomId('profile_scraper') ?? config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+            $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
             
             if (!$phantomId) {
-                $this->releaseWorkspace();
                 Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured');
                 throw new \Exception('LinkedIn Profile Scraper phantom ID not configured');
             }
@@ -3041,13 +3082,9 @@ class PhantomBusterService
                 'expected_count' => $profileCount
             ]);
 
-            $finalResults = $results;
-            $this->releaseWorkspace();
-            return $finalResults;
+            return $results;
 
         } catch (\Throwable $th) {
-            // Release workspace on error
-            $this->releaseWorkspace();
             Log::error('PhantomBuster: Failed to scrape profiles in batch', [
                 'profile_urls' => $profileUrls,
                 'error' => $th->getMessage(),
