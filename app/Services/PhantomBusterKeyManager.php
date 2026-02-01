@@ -82,7 +82,9 @@ class PhantomBusterKeyManager
             'operation_type' => $operationType,
             'available_keys' => count($this->apiKeys),
             'available_phantoms' => count($phantomIds),
-            'max_pairs' => $maxPairs
+            'max_pairs' => $maxPairs,
+            'keys' => array_map(function($i) { return "key_{$i}"; }, array_keys($this->apiKeys)),
+            'phantoms' => $phantomIds
         ]);
         
         $startTime = time();
@@ -122,14 +124,15 @@ class PhantomBusterKeyManager
                     ];
                 }
                 
-                // Log which key is busy
+                // Log which key is busy (only on first pass to avoid spam)
                 if ($attempts <= $maxPairs) {
                     Log::info('⏳ PhantomBusterKeyManager: Key is busy, trying next', [
                         'operation_type' => $operationType,
                         'key_index' => $keyIndex,
                         'phantom_id' => $phantomId,
                         'lock_key' => $lockKey,
-                        'attempt' => $attempts
+                        'attempt' => $attempts,
+                        'is_locked' => true
                     ]);
                 }
             }
@@ -138,11 +141,13 @@ class PhantomBusterKeyManager
             if (time() - $startTime < $this->lockTimeout) {
                 $waitTime = min(5, ($this->lockTimeout - (time() - $startTime)) / 10); // Wait up to 5 seconds
                 if ($waitTime > 0) {
-                    Log::info('⏸️ PhantomBusterKeyManager: All keys busy, waiting before retry', [
+                    Log::info('⏳ PhantomBuster: All API keys in use, waiting for availability...', [
                         'operation_type' => $operationType,
+                        'total_keys' => count($this->apiKeys),
                         'wait_seconds' => $waitTime,
                         'elapsed_seconds' => time() - $startTime,
-                        'max_wait_seconds' => $this->lockTimeout
+                        'max_wait_seconds' => $this->lockTimeout,
+                        'attempts' => $attempts
                     ]);
                     sleep((int)$waitTime);
                 }
@@ -172,18 +177,37 @@ class PhantomBusterKeyManager
     {
         if (isset($keyPair['lock']) && $keyPair['lock']) {
             try {
-                $keyPair['lock']->release();
-                Log::info('🔓 PhantomBusterKeyManager: Released key pair', [
-                    'key_index' => $keyPair['key_index'] ?? 'unknown',
+                $keyIndex = $keyPair['key_index'] ?? 'unknown';
+                $lockKey = $keyPair['lock_key'] ?? 'unknown';
+                
+                Log::info('🔓 PhantomBusterKeyManager: Attempting to release key pair', [
+                    'key_index' => $keyIndex,
                     'phantom_id' => $keyPair['phantom_id'] ?? 'unknown',
-                    'lock_key' => $keyPair['lock_key'] ?? 'unknown'
+                    'lock_key' => $lockKey
+                ]);
+                
+                $keyPair['lock']->release();
+                
+                Log::info('✅ PhantomBusterKeyManager: Successfully released key pair', [
+                    'key_index' => $keyIndex,
+                    'phantom_id' => $keyPair['phantom_id'] ?? 'unknown',
+                    'lock_key' => $lockKey,
+                    'note' => 'Key is now available for other jobs'
                 ]);
             } catch (\Exception $e) {
-                Log::warning('⚠️ PhantomBusterKeyManager: Failed to release lock', [
+                Log::error('❌ PhantomBusterKeyManager: Failed to release lock', [
                     'key_index' => $keyPair['key_index'] ?? 'unknown',
-                    'error' => $e->getMessage()
+                    'lock_key' => $keyPair['lock_key'] ?? 'unknown',
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ]);
             }
+        } else {
+            Log::warning('⚠️ PhantomBusterKeyManager: Cannot release - no lock in key pair', [
+                'key_index' => $keyPair['key_index'] ?? 'unknown',
+                'has_lock' => isset($keyPair['lock']),
+                'lock_key' => $keyPair['lock_key'] ?? 'unknown'
+            ]);
         }
     }
     

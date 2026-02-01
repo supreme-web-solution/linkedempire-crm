@@ -725,8 +725,20 @@ class PhantomBusterService
                 $likersFailed = false;
 
                 try {
-                    // Get likers for this post
+                    // Get likers for this post (this will acquire a key pair)
+                    Log::info('🔄 PhantomBuster: About to fetch post likers (will acquire key)', [
+                        'post_url' => $postUrl,
+                        'post_number' => $processedPosts,
+                        'company_url' => $companyUrl
+                    ]);
+                    
                     $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
+                    
+                    Log::info('✅ PhantomBuster: Post likers fetched successfully', [
+                        'post_url' => $postUrl,
+                        'likers_count' => is_array($likers) ? count($likers) : 0,
+                        'post_number' => $processedPosts
+                    ]);
                     
                     // Ensure we only merge arrays (filter out any non-array items)
                     $validLikers = array_filter($likers, function($liker) {
