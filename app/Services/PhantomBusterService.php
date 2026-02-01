@@ -743,6 +743,39 @@ class PhantomBusterService
         $audience = null,
         string $apiKey = null
     ): array {
+        // Per-agent lock to ensure only one job processes posts at a time
+        // PhantomBuster API only allows 1 parallel execution per agent
+        // Lock must be held for the ENTIRE operation (all posts), not just individual post calls
+        $phantomIdForLock = config('services.phantombuster.linkedin_post_likers_phantom_id');
+        if (!$phantomIdForLock) {
+            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured for lock. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+        }
+        
+        $lockKey = "phantombuster:agent:{$phantomIdForLock}:launch_lock";
+        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
+        $lockDuration = 1800; // 30 minutes - how long to hold the lock if not manually released (safety net)
+        
+        $lock = Cache::lock($lockKey, $lockDuration);
+        
+        // Acquire the lock, blocking up to $lockTimeout seconds
+        $acquired = $lock->block($lockTimeout);
+        
+        if (!$acquired) {
+            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
+                'phantom_id' => $phantomIdForLock,
+                'lock_key' => $lockKey,
+                'timeout_seconds' => $lockTimeout,
+                'company_url' => $companyUrl,
+                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
+            ]);
+            throw new \Exception(
+                "LOCK_TIMEOUT: PhantomBuster agent {$phantomIdForLock} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
+                "This job will be reset so you can try again. " .
+                "Each agent allows only 1 parallel execution at a time."
+            );
+        }
+
         try {
             Log::info('PhantomBuster: Starting to fetch company post engagers', [
                 'company_url' => $companyUrl
@@ -1027,6 +1060,8 @@ class PhantomBusterService
                 'newly_scraped_posts' => $newlyScrapedPostUrls ?? []
             ];
         } finally {
+            // Always release the per-agent lock
+            $lock->release();
             $this->sessionCookieOverride = null;
             $this->userAgentOverride = null;
         }
@@ -1629,9 +1664,10 @@ class PhantomBusterService
             throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
         }
 
-        // Per-agent lock to ensure only one instance of each agent runs at a time
-        // PhantomBuster API only allows 1 parallel execution per agent
-        // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
+        // Note: Lock is now handled at fetchCompanyPostEngagersInternal level
+        // This method is called from within that locked context, so no additional lock needed here
+        // However, we keep a lightweight lock here for cases where this method is called directly
+        // (e.g., from fetchPostLikersForUrl). The lock key is the same, so it will queue properly.
         $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
         $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
         $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
