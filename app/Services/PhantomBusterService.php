@@ -8,123 +8,29 @@ use Illuminate\Support\Facades\Cache;
 
 class PhantomBusterService
 {
-    private string $apiKey;
-    private array $apiKeys;
+    private string $apiKey; // Legacy - kept for backward compatibility
     private string $apiUrl;
     private ?string $sessionCookieOverride = null;
     private ?string $userAgentOverride = null;
-    private ?string $currentApiKey = null; // Key currently in use for this operation
-    private ?string $currentLockKey = null; // Lock key for the current operation
+    private ?PhantomBusterKeyManager $keyManager = null;
 
     public function __construct()
     {
-        $this->apiKeys = config('services.phantombuster.api_keys', []);
-        $this->apiKey = config('services.phantombuster.api_key'); // Fallback to single key
+        $this->apiKey = config('services.phantombuster.api_key');
         $this->apiUrl = config('services.phantombuster.api_url', 'https://api.phantombuster.com/api/v1');
 
-        // If no multiple keys configured, use single key
-        if (empty($this->apiKeys) && $this->apiKey) {
-            $this->apiKeys = [$this->apiKey];
-        }
-
-        if (empty($this->apiKeys)) {
-            Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
-            throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
-        }
-    }
-
-    /**
-     * Acquire an available API key with lock
-     * Waits up to $maxWaitSeconds for a key to become available
-     * 
-     * @param int $maxWaitSeconds Maximum seconds to wait for a key
-     * @param int $lockTimeoutSeconds Lock timeout (how long the key is reserved)
-     * @return string The acquired API key
-     * @throws \Exception If no key is available after waiting
-     */
-    private function acquireApiKey(int $maxWaitSeconds = 300, int $lockTimeoutSeconds = 900): string
-    {
-        $startTime = time();
-        $attempts = 0;
-
-        while (time() - $startTime < $maxWaitSeconds) {
-            $attempts++;
-            
-            // Try each key in order
-            foreach ($this->apiKeys as $index => $key) {
-                $lockKey = "phantombuster_key_lock_{$index}";
-                
-                // Try to acquire lock (non-blocking)
-                $lock = Cache::lock($lockKey, $lockTimeoutSeconds);
-                
-                if ($lock->get()) {
-                    $this->currentApiKey = $key;
-                    $this->currentLockKey = $lockKey;
-                    
-                    Log::info('🔑 PhantomBuster: Acquired API key', [
-                        'key_index' => $index,
-                        'total_keys' => count($this->apiKeys),
-                        'wait_time_seconds' => time() - $startTime,
-                        'attempts' => $attempts
-                    ]);
-                    
-                    return $key;
-                }
-            }
-            
-            // All keys are in use, wait a bit before retrying
-            if ($attempts === 1) {
-                Log::info('⏳ PhantomBuster: All API keys in use, waiting for availability...', [
-                    'total_keys' => count($this->apiKeys),
-                    'max_wait_seconds' => $maxWaitSeconds
-                ]);
-            }
-            
-            sleep(2); // Wait 2 seconds before retrying
-        }
-
-        // No key available after waiting
-        throw new \Exception(
-            "All PhantomBuster API keys are currently in use. " .
-            "Please wait for running operations to complete. " .
-            "Configured keys: " . count($this->apiKeys)
-        );
-    }
-
-    /**
-     * Release the currently acquired API key lock
-     */
-    private function releaseApiKey(): void
-    {
-        if ($this->currentLockKey) {
-            $lock = Cache::lock($this->currentLockKey);
-            if ($lock->get()) {
-                $lock->release();
-                Log::info('🔓 PhantomBuster: Released API key lock', [
-                    'lock_key' => $this->currentLockKey
-                ]);
-            }
-            $this->currentLockKey = null;
-            $this->currentApiKey = null;
-        }
-    }
-
-    /**
-     * Execute a callback with an acquired API key
-     * Automatically acquires and releases the key
-     * 
-     * @param callable $callback Function to execute with the API key
-     * @param int $maxWaitSeconds Maximum seconds to wait for a key
-     * @return mixed Result from callback
-     */
-    private function withApiKey(callable $callback, int $maxWaitSeconds = 300)
-    {
-        $key = $this->acquireApiKey($maxWaitSeconds);
-        
+        // Initialize key manager for multi-workspace support
         try {
-            return $callback($key);
-        } finally {
-            $this->releaseApiKey();
+            $this->keyManager = new PhantomBusterKeyManager();
+        } catch (\Exception $e) {
+            Log::warning('PhantomBusterService: Key manager initialization failed, falling back to single key', [
+                'error' => $e->getMessage()
+            ]);
+            // Fall back to single key mode
+            if (!$this->apiKey) {
+                Log::error("PHANTOMBUSTER_API_KEY not found in environment variables");
+                throw new \Exception("PHANTOMBUSTER_API_KEY not configured");
+            }
         }
     }
 
@@ -133,12 +39,17 @@ class PhantomBusterService
      *
      * @param string $phantomId The Phantom ID to launch
      * @param array $arguments Arguments to pass to the Phantom
+     * @param string|null $apiKey Optional API key to use (for key rotation)
      * @return array Response with containerId
      */
     public function launchPhantom(string $phantomId, array $arguments = [], ?string $apiKey = null): array
     {
-        // Use provided key or current key (from withApiKey context)
-        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
+        // Use provided API key or fall back to default
+        $keyToUse = $apiKey ?? $this->apiKey;
+        
+        if (!$keyToUse) {
+            throw new \Exception("No API key available for PhantomBuster launch");
+        }
         
         $url = "{$this->apiUrl}/agent/{$phantomId}/launch";
 
@@ -294,10 +205,10 @@ class PhantomBusterService
      */
     public function getPhantomOutput(string $phantomId, string $containerId, ?string $apiKey = null): array
     {
-        // Use provided key or current key (from withApiKey context)
-        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
-        
         $url = "{$this->apiUrl}/agent/{$phantomId}/output";
+        
+        // Use provided API key or fall back to default
+        $keyToUse = $apiKey ?? $this->apiKey;
 
         try {
             $response = Http::timeout(30) // 30 seconds timeout
@@ -412,14 +323,11 @@ class PhantomBusterService
      *
      * @return array List of phantoms with their IDs and names
      */
-    public function listPhantoms(?string $apiKey = null): array
+    public function listPhantoms(): array
     {
         // Note: This endpoint may not be available in all PhantomBuster API versions
         // It's better to configure phantom IDs directly in .env instead of using this
         $url = "{$this->apiUrl}/agents/fetch-all";
-        
-        // Use provided key or current key (from withApiKey context)
-        $keyToUse = $apiKey ?? $this->currentApiKey ?? $this->apiKey;
 
         Log::info('PhantomBuster: Fetching list of phantoms');
 
@@ -427,7 +335,7 @@ class PhantomBusterService
             $response = Http::timeout(30) // 30 seconds timeout
                 ->connectTimeout(15) // 15 seconds for DNS/connection
                 ->withHeaders([
-                    'X-Phantombuster-Key-1' => $keyToUse
+                    'X-Phantombuster-Key-1' => $this->apiKey
                 ])->get($url);
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             $errorMessage = $e->getMessage();
@@ -722,60 +630,6 @@ class PhantomBusterService
     ): array {
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
-        
-        // Use key rotation - acquire a key and use it for the entire operation
-        return $this->withApiKey(function($apiKey) use ($companyUrl, $phantomId, $maxWaitSeconds, $pollIntervalSeconds, $sessionCookie, $userAgent, $alreadyScrapedPostUrls, $audience) {
-            return $this->fetchCompanyPostEngagersInternal($companyUrl, $phantomId, $maxWaitSeconds, $pollIntervalSeconds, $sessionCookie, $userAgent, $alreadyScrapedPostUrls, $audience, $apiKey);
-        }, $maxWaitSeconds);
-    }
-    
-    /**
-     * Internal method that does the actual work (called with acquired API key)
-     */
-    private function fetchCompanyPostEngagersInternal(
-        string $companyUrl,
-        ?string $phantomId = null,
-        int $maxWaitSeconds = 600,
-        int $pollIntervalSeconds = 15,
-        ?string $sessionCookie = null,
-        ?string $userAgent = null,
-        array $alreadyScrapedPostUrls = [],
-        $audience = null,
-        string $apiKey = null
-    ): array {
-        // Per-agent lock to ensure only one job processes posts at a time
-        // PhantomBuster API only allows 1 parallel execution per agent
-        // Lock must be held for the ENTIRE operation (all posts), not just individual post calls
-        $phantomIdForLock = config('services.phantombuster.linkedin_post_likers_phantom_id');
-        if (!$phantomIdForLock) {
-            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured for lock. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-        }
-        
-        $lockKey = "phantombuster:agent:{$phantomIdForLock}:launch_lock";
-        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
-        $lockDuration = 1800; // 30 minutes - how long to hold the lock if not manually released (safety net)
-        
-        $lock = Cache::lock($lockKey, $lockDuration);
-        
-        // Acquire the lock, blocking up to $lockTimeout seconds
-        $acquired = $lock->block($lockTimeout);
-        
-        if (!$acquired) {
-            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
-                'phantom_id' => $phantomIdForLock,
-                'lock_key' => $lockKey,
-                'timeout_seconds' => $lockTimeout,
-                'company_url' => $companyUrl,
-                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
-            ]);
-            throw new \Exception(
-                "LOCK_TIMEOUT: PhantomBuster agent {$phantomIdForLock} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
-                "This job will be reset so you can try again. " .
-                "Each agent allows only 1 parallel execution at a time."
-            );
-        }
-
         try {
             Log::info('PhantomBuster: Starting to fetch company post engagers', [
                 'company_url' => $companyUrl
@@ -872,7 +726,7 @@ class PhantomBusterService
 
                 try {
                     // Get likers for this post
-                    $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
+                    $likers = $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
                     
                     // Ensure we only merge arrays (filter out any non-array items)
                     $validLikers = array_filter($likers, function($liker) {
@@ -1060,8 +914,6 @@ class PhantomBusterService
                 'newly_scraped_posts' => $newlyScrapedPostUrls ?? []
             ];
         } finally {
-            // Always release the per-agent lock
-            $lock->release();
             $this->sessionCookieOverride = null;
             $this->userAgentOverride = null;
         }
@@ -1088,50 +940,11 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        // Per-agent lock for direct calls (not from fetchCompanyPostEngagersInternal)
-        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
-        if (!$phantomId) {
-            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-        }
-        
-        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
-        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
-        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
-        
-        $lock = Cache::lock($lockKey, $lockDuration);
-        
-        // Acquire the lock, blocking up to $lockTimeout seconds
-        $acquired = $lock->block($lockTimeout);
-        
-        if (!$acquired) {
-            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
-                'phantom_id' => $phantomId,
-                'lock_key' => $lockKey,
-                'timeout_seconds' => $lockTimeout,
-                'post_url' => $postUrl,
-                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
-            ]);
-            throw new \Exception(
-                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
-                "This job will be reset so you can try again. " .
-                "Each agent allows only 1 parallel execution at a time."
-            );
-        }
-
         try {
-            // Use key rotation - acquire a key and use it for the entire operation
-            return $this->withApiKey(function($apiKey) use ($postUrl, $maxWaitSeconds, $pollIntervalSeconds) {
-                try {
-                    return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
-                } finally {
-                    $this->sessionCookieOverride = null;
-                    $this->userAgentOverride = null;
-                }
-            }, $maxWaitSeconds);
+            return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds);
         } finally {
-            // Always release the per-agent lock
-            $lock->release();
+            $this->sessionCookieOverride = null;
+            $this->userAgentOverride = null;
         }
     }
 
@@ -1299,7 +1112,7 @@ class PhantomBusterService
                         sleep($pollIntervalSeconds);
                     }
 
-                    $output = $this->getPhantomOutput($phantomId, $containerId);
+                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         if ($last404Time === null) {
@@ -1690,18 +1503,40 @@ class PhantomBusterService
     private function fetchPostLikers(
         string $postUrl,
         int $maxWaitSeconds = 300,
-        int $pollIntervalSeconds = 10,
-        ?string $apiKey = null
+        int $pollIntervalSeconds = 10
     ): array {
-        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
-        
-        if (!$phantomId) {
-            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
-            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+        // Acquire key pair using key manager (supports multiple workspaces)
+        $keyPair = null;
+        if ($this->keyManager) {
+            try {
+                Log::info('🔑 PhantomBuster: Acquiring key pair for post likers', [
+                    'post_url' => $postUrl
+                ]);
+                $keyPair = $this->keyManager->acquireKeyPair('post_likers');
+                $phantomId = $keyPair['phantom_id'];
+                $apiKey = $keyPair['api_key'];
+                Log::info('✅ PhantomBuster: Key pair acquired for post likers', [
+                    'post_url' => $postUrl,
+                    'key_index' => $keyPair['key_index'],
+                    'phantom_id' => $phantomId
+                ]);
+            } catch (\Exception $e) {
+                Log::error('❌ PhantomBuster: Failed to acquire key pair for post likers', [
+                    'post_url' => $postUrl,
+                    'error' => $e->getMessage()
+                ]);
+                throw $e;
+            }
+        } else {
+            // Fallback to single key mode
+            $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
+            if (!$phantomId) {
+                Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+                throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+            }
+            $apiKey = null; // Will use default
         }
 
-        // Note: Lock is handled at fetchCompanyPostEngagersInternal or fetchPostLikersForUrl level
-        // This method is called from within a locked context, so no additional lock needed here
         $arguments = [
             'postUrl' => $postUrl,
         ];
@@ -1717,6 +1552,7 @@ class PhantomBusterService
             $arguments['userAgent'] = $userAgent;
         }
 
+        try {
             $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
             $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
             
@@ -1742,7 +1578,7 @@ class PhantomBusterService
                     sleep($pollIntervalSeconds);
                 }
 
-                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey);
+                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
             } catch (\Exception $e) {
                 // Handle 404 errors gracefully - container might not be ready yet
                 if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
@@ -1835,6 +1671,7 @@ class PhantomBusterService
             
             if (is_array($likers) && !empty($likers)) {
                 Log::info('PhantomBuster: Got likers data', ['count' => count($likers)]);
+                // Lock will be released in finally block
                 return $likers;
             }
             
@@ -1961,6 +1798,7 @@ class PhantomBusterService
                                             $jsonError = json_last_error();
                                             
                                             if ($jsonError === JSON_ERROR_NONE && is_array($likersData) && !empty($likersData)) {
+                                                // Lock will be released in finally block
                                                 return $likersData;
                                             } else {
                                                 Log::warning('⚠️ PhantomBuster: JSON parsed but invalid or empty', [
@@ -2022,6 +1860,7 @@ class PhantomBusterService
                                             }
                                             
                                             if (!empty($likersData)) {
+                                                // Lock will be released in finally block
                                                 return $likersData;
                                             }
                                         } else {
@@ -2270,6 +2109,7 @@ class PhantomBusterService
                         } else {
                             // It's actual data!
                             Log::info('PhantomBuster: Found likers in output array', ['count' => count($outputArray)]);
+                            // Lock will be released in finally block
                             return $outputArray;
                         }
                     }
@@ -2322,14 +2162,25 @@ class PhantomBusterService
             $errorNote = 'LinkedIn session cookie (li_at) appears to be expired. Please refresh it from the Social Accounts page.';
         }
         
-        Log::error('PhantomBuster: Timeout or no data for post likers', [
-            'post_url' => $postUrl,
-            'waited_seconds' => time() - $startTime,
-            'max_wait_seconds' => $maxWaitSeconds,
-            'note' => $errorNote,
-            'error_message' => $errorMessage ?? null
-        ]);
-        return [];
+            Log::error('PhantomBuster: Timeout or no data for post likers', [
+                'post_url' => $postUrl,
+                'waited_seconds' => time() - $startTime,
+                'max_wait_seconds' => $maxWaitSeconds,
+                'note' => $errorNote,
+                'error_message' => $errorMessage ?? null
+            ]);
+            
+            return [];
+        } finally {
+            // Always release lock, even on exception or early return
+            if ($keyPair && $this->keyManager) {
+                $this->keyManager->releaseKeyPair($keyPair);
+                Log::info('🔓 PhantomBuster: Released key pair lock (finally block)', [
+                    'post_url' => $postUrl,
+                    'key_index' => $keyPair['key_index'] ?? 'unknown'
+                ]);
+            }
+        }
     }
 
     /**
@@ -2392,7 +2243,7 @@ class PhantomBusterService
                     sleep($pollIntervalSeconds);
                 }
 
-                $output = $this->getPhantomOutput($phantomId, $containerId);
+                $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
             } catch (\Exception $e) {
                 if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                     if ($last404Time === null) {
@@ -2597,58 +2448,36 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
-        
-        if (!$phantomId) {
-            Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
-            throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
-        }
-
-        // Use key rotation - acquire a key and use it for the entire operation
-        return $this->withApiKey(function($apiKey) use ($profileUrl, $sessionCookie, $userAgent, $identities, $maxWaitSeconds, $pollIntervalSeconds, $phantomId) {
-            return $this->scrapeLinkedInProfileInternal($profileUrl, $sessionCookie, $userAgent, $identities, $maxWaitSeconds, $pollIntervalSeconds, $phantomId, $apiKey);
-        }, $maxWaitSeconds);
-    }
-    
-    /**
-     * Internal method that does the actual scraping (called with acquired API key)
-     */
-    private function scrapeLinkedInProfileInternal(
-        string $profileUrl,
-        ?string $sessionCookie,
-        ?string $userAgent,
-        ?array $identities,
-        int $maxWaitSeconds,
-        int $pollIntervalSeconds,
-        string $phantomId,
-        string $apiKey
-    ): array {
-        // Per-agent lock to ensure only one instance of each agent runs at a time
-        // PhantomBuster API only allows 1 parallel execution per agent
-        // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
-        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
-        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
-        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
-        
-        $lock = Cache::lock($lockKey, $lockDuration);
-        
-        // Log removed to reduce verbosity - only log lock failures
-        
-        // Acquire the lock, blocking up to $lockTimeout seconds
-        $acquired = $lock->block($lockTimeout);
-        
-        if (!$acquired) {
-            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
-                'phantom_id' => $phantomId,
-                'lock_key' => $lockKey,
-                'timeout_seconds' => $lockTimeout,
-                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
-            ]);
-            throw new \Exception(
-                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
-                "This job will be reset so you can try again. " .
-                "Each agent allows only 1 parallel execution at a time."
-            );
+        // Acquire key pair using key manager (supports multiple workspaces)
+        $keyPair = null;
+        if ($this->keyManager) {
+            try {
+                Log::info('🔑 PhantomBuster: Acquiring key pair for profile scraper', [
+                    'profile_url' => $profileUrl
+                ]);
+                $keyPair = $this->keyManager->acquireKeyPair('profile_scraper');
+                $phantomId = $keyPair['phantom_id'];
+                $apiKey = $keyPair['api_key'];
+                Log::info('✅ PhantomBuster: Key pair acquired for profile scraper', [
+                    'profile_url' => $profileUrl,
+                    'key_index' => $keyPair['key_index'],
+                    'phantom_id' => $phantomId
+                ]);
+            } catch (\Exception $e) {
+                Log::error('❌ PhantomBuster: Failed to acquire key pair for profile scraper', [
+                    'profile_url' => $profileUrl,
+                    'error' => $e->getMessage()
+                ]);
+                throw $e;
+            }
+        } else {
+            // Fallback to single key mode
+            $phantomId = config('services.phantombuster.linkedin_profile_scraper_phantom_id');
+            if (!$phantomId) {
+                Log::error('PhantomBuster: LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
+                throw new \Exception('LinkedIn Profile Scraper phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID in your .env file.');
+            }
+            $apiKey = null; // Will use default
         }
 
         try {
@@ -2706,7 +2535,7 @@ class PhantomBusterService
             }
 
 
-            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
+            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey ?? null);
             $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
 
             if (!$containerId) {
@@ -2736,7 +2565,7 @@ class PhantomBusterService
                 }
 
                 try {
-                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey);
+                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         continue;
@@ -2829,11 +2658,13 @@ class PhantomBusterService
             ]);
             throw $th;
         } finally {
-            // Always release the lock, even if an exception was thrown
-            // Lock must be held for entire operation (launch + polling)
-            if ($acquired) {
-                $lock->release();
-                // Log removed to reduce verbosity
+            // Always release key pair lock, even if an exception was thrown
+            if ($keyPair && $this->keyManager) {
+                $this->keyManager->releaseKeyPair($keyPair);
+                Log::info('🔓 PhantomBuster: Released key pair lock for profile scraper (finally block)', [
+                    'profile_url' => $profileUrl,
+                    'key_index' => $keyPair['key_index'] ?? 'unknown'
+                ]);
             }
         }
     }
@@ -2955,7 +2786,7 @@ class PhantomBusterService
                 }
 
                 try {
-                    $output = $this->getPhantomOutput($phantomId, $containerId);
+                    $output = $this->getPhantomOutput($phantomId, $containerId, $apiKey ?? null);
                 } catch (\Exception $e) {
                     if (str_contains($e->getMessage(), '404') || str_contains($e->getMessage(), 'Container not found')) {
                         continue;

@@ -65,13 +65,24 @@ return [
     ],
 
     'phantombuster' => [
+        // Multiple API keys (workspaces) - comma-separated
+        // Format: key1,key2,key3,key4,key5
+        // Each key can process one operation at a time
+        // System will rotate through available keys automatically
         'api_key' => env('PHANTOMBUSTER_API_KEY'),
-        'api_keys' => array_filter(array_map('trim', explode(',', env('PHANTOMBUSTER_API_KEY', '')))),
         'api_url' => env('PHANTOMBUSTER_API_URL', 'https://api.phantombuster.com/api/v1'),
+        
+        // Multiple Phantom IDs per type - comma-separated (must match number of API keys)
+        // Format: phantom1,phantom2,phantom3,phantom4,phantom5
         // LinkedIn Post Likers Export - extracts users who liked a specific post (requires post URL)
         'linkedin_post_likers_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID'),
         // LinkedIn Post Comments Export - extracts users who commented on a specific post (requires post URL)
         'linkedin_post_comments_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_POST_COMMENTS_PHANTOM_ID'),
+        // LinkedIn Search Export - exports search results from a LinkedIn search URL
+        'linkedin_search_export_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_SEARCH_EXPORT_PHANTOM_ID'),
+        // LinkedIn Profile Scraper - scrapes full profile data including email
+        'linkedin_profile_scraper_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID'),
+        
         // Limit how many company posts we process per run
         // Each post = 1 phantom call (likers only)
         // Lower = less PhantomBuster credits used, Higher = more data scraped
@@ -86,10 +97,6 @@ return [
         // Optional: Custom user agent (defaults to Chrome on Windows if not set)
         // To get: Open DevTools > Console > type: navigator.userAgent
         'linkedin_user_agent' => env('PHANTOMBUSTER_LINKEDIN_USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'),
-        // LinkedIn Search Export - exports search results from a LinkedIn search URL
-        'linkedin_search_export_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_SEARCH_EXPORT_PHANTOM_ID'),
-        // LinkedIn Profile Scraper - scrapes full profile data including email
-        'linkedin_profile_scraper_phantom_id' => env('PHANTOMBUSTER_LINKEDIN_PROFILE_SCRAPER_PHANTOM_ID'),
     ],
 
     'email_scraping' => [
