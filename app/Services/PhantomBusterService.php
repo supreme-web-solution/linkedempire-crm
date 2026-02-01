@@ -1088,15 +1088,51 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
 
-        // Use key rotation - acquire a key and use it for the entire operation
-        return $this->withApiKey(function($apiKey) use ($postUrl, $maxWaitSeconds, $pollIntervalSeconds) {
-            try {
-                return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
-            } finally {
-                $this->sessionCookieOverride = null;
-                $this->userAgentOverride = null;
-            }
-        }, $maxWaitSeconds);
+        // Per-agent lock for direct calls (not from fetchCompanyPostEngagersInternal)
+        $phantomId = config('services.phantombuster.linkedin_post_likers_phantom_id');
+        if (!$phantomId) {
+            Log::error('PhantomBuster: LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+            throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
+        }
+        
+        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
+        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
+        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
+        
+        $lock = Cache::lock($lockKey, $lockDuration);
+        
+        // Acquire the lock, blocking up to $lockTimeout seconds
+        $acquired = $lock->block($lockTimeout);
+        
+        if (!$acquired) {
+            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
+                'phantom_id' => $phantomId,
+                'lock_key' => $lockKey,
+                'timeout_seconds' => $lockTimeout,
+                'post_url' => $postUrl,
+                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
+            ]);
+            throw new \Exception(
+                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
+                "This job will be reset so you can try again. " .
+                "Each agent allows only 1 parallel execution at a time."
+            );
+        }
+
+        try {
+            // Use key rotation - acquire a key and use it for the entire operation
+            return $this->withApiKey(function($apiKey) use ($postUrl, $maxWaitSeconds, $pollIntervalSeconds) {
+                try {
+                    return $this->fetchPostLikers($postUrl, $maxWaitSeconds, $pollIntervalSeconds, $apiKey);
+                } finally {
+                    $this->sessionCookieOverride = null;
+                    $this->userAgentOverride = null;
+                }
+            }, $maxWaitSeconds);
+        } finally {
+            // Always release the per-agent lock
+            $lock->release();
+        }
     }
 
     /**
@@ -1664,49 +1700,22 @@ class PhantomBusterService
             throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
         }
 
-        // Note: Lock is now handled at fetchCompanyPostEngagersInternal level
-        // This method is called from within that locked context, so no additional lock needed here
-        // However, we keep a lightweight lock here for cases where this method is called directly
-        // (e.g., from fetchPostLikersForUrl). The lock key is the same, so it will queue properly.
-        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
-        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
-        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
+        // Note: Lock is handled at fetchCompanyPostEngagersInternal or fetchPostLikersForUrl level
+        // This method is called from within a locked context, so no additional lock needed here
+        $arguments = [
+            'postUrl' => $postUrl,
+        ];
         
-        $lock = Cache::lock($lockKey, $lockDuration);
-        
-        // Acquire the lock, blocking up to $lockTimeout seconds
-        $acquired = $lock->block($lockTimeout);
-        
-        if (!$acquired) {
-            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
-                'phantom_id' => $phantomId,
-                'lock_key' => $lockKey,
-                'timeout_seconds' => $lockTimeout,
-                'post_url' => $postUrl,
-                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
-            ]);
-            throw new \Exception(
-                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
-                "This job will be reset so you can try again. " .
-                "Each agent allows only 1 parallel execution at a time."
-            );
+        // Add session cookie and user agent
+        $sessionCookie = $this->getSessionCookie();
+        if ($sessionCookie) {
+            $arguments['sessionCookie'] = $sessionCookie;
         }
-
-        try {
-            $arguments = [
-                'postUrl' => $postUrl,
-            ];
-            
-            // Add session cookie and user agent
-            $sessionCookie = $this->getSessionCookie();
-            if ($sessionCookie) {
-                $arguments['sessionCookie'] = $sessionCookie;
-            }
-            
-            $userAgent = $this->getUserAgent();
-            if ($userAgent) {
-                $arguments['userAgent'] = $userAgent;
-            }
+        
+        $userAgent = $this->getUserAgent();
+        if ($userAgent) {
+            $arguments['userAgent'] = $userAgent;
+        }
 
             $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
             $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
@@ -2321,10 +2330,6 @@ class PhantomBusterService
             'error_message' => $errorMessage ?? null
         ]);
         return [];
-        } finally {
-            // Always release the per-agent lock
-            $lock->release();
-        }
     }
 
     /**
