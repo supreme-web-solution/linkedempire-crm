@@ -631,14 +631,28 @@ class PhantomBusterService
         $this->sessionCookieOverride = $sessionCookie;
         $this->userAgentOverride = $userAgent;
         try {
-            Log::info('PhantomBuster: Starting to fetch company post engagers', [
-                'company_url' => $companyUrl
+            Log::info('🔄 PhantomBuster: Starting to fetch company post engagers', [
+                'company_url' => $companyUrl,
+                'timestamp' => now()->toIso8601String(),
+                'note' => 'This will acquire a key when calling fetchPostLikers'
             ]);
 
             // Step 1: Get company posts using RapidAPI - sort by "top" for highest engagement
+            Log::info('🔄 PhantomBuster: Fetching company posts from RapidAPI', [
+                'company_url' => $companyUrl,
+                'timestamp' => now()->toIso8601String()
+            ]);
+            
             $rapidApiService = new \App\Services\RapidApiService();
             // Try "top" first for highest engagement posts, fallback to "recent" if not supported
             $posts = $rapidApiService->fetch_company_posts($companyUrl, 1, 'top');
+            
+            Log::info('✅ PhantomBuster: RapidAPI returned posts', [
+                'company_url' => $companyUrl,
+                'has_posts' => !empty($posts),
+                'posts_count' => isset($posts['data']) ? count($posts['data']) : 0,
+                'timestamp' => now()->toIso8601String()
+            ]);
             
             if (empty($posts) || !isset($posts['data']) || empty($posts['data'])) {
                 Log::warning('PhantomBuster: No posts found for company', ['company_url' => $companyUrl]);
@@ -697,7 +711,8 @@ class PhantomBusterService
                 'total_posts_available' => count($postUrls),
                 'max_attempts' => $maxAttempts,
                 'target_successful_posts' => $maxSuccessfulPosts,
-                'note' => 'Will skip already-scraped posts and continue until finding unscraped ones.'
+                'note' => 'Will skip already-scraped posts and continue until finding unscraped ones.',
+                'timestamp' => now()->toIso8601String()
             ]);
 
             $allEngagers = [];
@@ -706,6 +721,13 @@ class PhantomBusterService
             $successfulPosts = 0;
             $postIndex = 0;
             $newlyScrapedPostUrls = []; // Track newly scraped posts to return
+            
+            Log::info('🔄 PhantomBuster: About to start processing posts loop', [
+                'company_url' => $companyUrl,
+                'posts_to_process' => count($postUrls),
+                'max_attempts' => $maxAttempts,
+                'note' => 'First call to fetchPostLikers will acquire a key'
+            ]);
             
             // Process posts until we find enough unscraped ones or hit max attempts
             while ($postIndex < count($postUrls) && $processedPosts < $maxAttempts) {
@@ -718,7 +740,8 @@ class PhantomBusterService
                     'total_available' => count($postUrls),
                     'successful_so_far' => $successfulPosts,
                     'skipped_so_far' => $skippedPosts,
-                    'post_url' => $postUrl
+                    'post_url' => $postUrl,
+                    'timestamp' => now()->toIso8601String()
                 ]);
 
                 $postEngagers = 0;
