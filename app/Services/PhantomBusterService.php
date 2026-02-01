@@ -1629,38 +1629,66 @@ class PhantomBusterService
             throw new \Exception('LinkedIn Post Likers phantom ID not configured. Please set PHANTOMBUSTER_LINKEDIN_POST_LIKERS_PHANTOM_ID in your .env file.');
         }
 
-        $arguments = [
-            'postUrl' => $postUrl,
-        ];
+        // Per-agent lock to ensure only one instance of each agent runs at a time
+        // PhantomBuster API only allows 1 parallel execution per agent
+        // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
+        $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
+        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
+        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
         
-        // Add session cookie and user agent
-        $sessionCookie = $this->getSessionCookie();
-        if ($sessionCookie) {
-            $arguments['sessionCookie'] = $sessionCookie;
-        }
+        $lock = Cache::lock($lockKey, $lockDuration);
         
-        $userAgent = $this->getUserAgent();
-        if ($userAgent) {
-            $arguments['userAgent'] = $userAgent;
+        // Acquire the lock, blocking up to $lockTimeout seconds
+        $acquired = $lock->block($lockTimeout);
+        
+        if (!$acquired) {
+            Log::error('PhantomBuster: Failed to acquire per-agent lock after timeout', [
+                'phantom_id' => $phantomId,
+                'lock_key' => $lockKey,
+                'timeout_seconds' => $lockTimeout,
+                'post_url' => $postUrl,
+                'message' => 'Another job is holding the lock for this agent. The job will fail and can be retried later.'
+            ]);
+            throw new \Exception(
+                "LOCK_TIMEOUT: PhantomBuster agent {$phantomId} is currently processing another request and the lock could not be acquired after waiting {$lockTimeout} seconds. " .
+                "This job will be reset so you can try again. " .
+                "Each agent allows only 1 parallel execution at a time."
+            );
         }
 
-        $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
-        $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
-        
-        if (!$containerId) {
-            throw new \Exception("Failed to get container ID from PhantomBuster launch for post likers");
-        }
+        try {
+            $arguments = [
+                'postUrl' => $postUrl,
+            ];
+            
+            // Add session cookie and user agent
+            $sessionCookie = $this->getSessionCookie();
+            if ($sessionCookie) {
+                $arguments['sessionCookie'] = $sessionCookie;
+            }
+            
+            $userAgent = $this->getUserAgent();
+            if ($userAgent) {
+                $arguments['userAgent'] = $userAgent;
+            }
 
-        // Wait a bit before first poll to allow container to initialize
-        // PhantomBuster containers need time to start up
-        sleep(5);
+            $launchResponse = $this->launchPhantom($phantomId, $arguments, $apiKey);
+            $containerId = $launchResponse['containerId'] ?? $launchResponse['data']['containerId'] ?? null;
+            
+            if (!$containerId) {
+                throw new \Exception("Failed to get container ID from PhantomBuster launch for post likers");
+            }
 
-        // Poll for completion
-        $startTime = time();
-        $attempts = 0;
-        $last404Time = null;
-        
-        while (time() - $startTime < $maxWaitSeconds) {
+            // Wait a bit before first poll to allow container to initialize
+            // PhantomBuster containers need time to start up
+            sleep(5);
+
+            // Poll for completion
+            $startTime = time();
+            $attempts = 0;
+            $last404Time = null;
+            
+            while (time() - $startTime < $maxWaitSeconds) {
             $attempts++;
             
             try {
@@ -2257,6 +2285,10 @@ class PhantomBusterService
             'error_message' => $errorMessage ?? null
         ]);
         return [];
+        } finally {
+            // Always release the per-agent lock
+            $lock->release();
+        }
     }
 
     /**
