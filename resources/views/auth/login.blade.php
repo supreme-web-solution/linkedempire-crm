@@ -1,11 +1,11 @@
 @extends('layout.guest')
 @seo([
-        'title' => 'Login - ' . config('app.name'),
-        'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
-        'image' => asset('images/site-image.png'),
-        'site_name' => config('app.name'),
-        'favicon' => asset('images/logo-1.png'),
-    ])
+    'title' => 'Login - ' . config('app.name'),
+    'description' => 'LinkedIn Lead Generation And Sales Automation Tool',
+    'image' => asset('images/site-image.png'),
+    'site_name' => config('app.name'),
+    'favicon' => asset('images/logo-1.png'),
+])
 
 @section('content')
     <div class="mt-7 bg-white border border-gray-200 rounded-xl shadow-2xs">
@@ -97,7 +97,7 @@
                             style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);"
                             onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';"
                             onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';">Sign
-                            in</button>
+                            In</button>
                     </div>
                 </form>
                 <!-- End Form -->
