@@ -23,6 +23,12 @@ class FetchCompetitorFollowersJob implements ShouldQueue
      */
     public int $timeout = 900;
 
+    /**
+     * The name of the queue the job should be sent to.
+     * Using 'default' queue which is handled by supervisor-1 in Horizon.
+     */
+    public string $queue = 'default';
+
     public int $userId;
     public int $audiencePkId;
     public string $companyUrl;

@@ -200,13 +200,14 @@ class LinkedInCompetitorController extends Controller
         $audience->source_meta = json_encode($meta);
         $audience->save();
 
+        // Dispatch job to default queue (handled by supervisor-1 in Horizon)
         FetchCompetitorFollowersJob::dispatch(
             $user->id,
             $audience->id,
             $data['company_url'],
             $integration->linkedin_session_cookie,
             $integration->linkedin_user_agent ?? config('services.phantombuster.linkedin_user_agent')
-        );
+        )->onQueue('default');
 
         return redirect()->route('competitor-followers.index')
             ->with('status', __('competitor_followers.fetch_started'));

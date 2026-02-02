@@ -70,9 +70,74 @@ These commands are automatically scheduled in `routes/console.php` and will run 
 
 ---
 
-## 🔄 **QUEUE WORKER** (Required for Background Jobs)
+## 🚀 **LARAVEL HORIZON** (Recommended for Production)
 
-The application uses **queue jobs** for asynchronous processing. You **MUST** run queue workers:
+The application uses **Laravel Horizon** for queue management and monitoring. Horizon provides a dashboard and automatically manages queue workers.
+
+### **Starting Horizon:**
+
+**For Local Development:**
+```bash
+php artisan horizon
+```
+
+**For Production (with Supervisor):**
+
+Create supervisor config `/etc/supervisor/conf.d/linkdominator-horizon.conf`:
+
+```ini
+[program:linkdominator-horizon]
+process_name=%(program_name)s
+command=php /path/to/your/project/artisan horizon
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+redirect_stderr=true
+stdout_logfile=/path/to/your/project/storage/logs/horizon.log
+stopwaitsecs=3600
+```
+
+Then:
+```bash
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start linkdominator-horizon
+```
+
+### **Restarting Horizon (IMPORTANT):**
+
+**After changing Horizon configuration** (`config/horizon.php`), you **MUST** restart Horizon:
+
+```bash
+# Graceful restart (waits for current jobs to finish)
+php artisan horizon:terminate
+
+# Then start again
+php artisan horizon
+```
+
+**Or if using Supervisor:**
+```bash
+sudo supervisorctl restart linkdominator-horizon
+```
+
+**⚠️ CRITICAL:** If jobs are stuck in "pending" after config changes, restart Horizon immediately!
+
+### **Horizon Dashboard:**
+
+Access the Horizon dashboard at: `http://your-domain.com/horizon`
+
+**Configuration:**
+- `supervisor-1`: Handles `default` queue with 10 workers, 900s timeout (15 minutes)
+- `supervisor-phantombuster`: Handles `phantombuster` queue with 5 workers, 600s timeout (10 minutes)
+
+---
+
+## 🔄 **QUEUE WORKER** (Alternative - If NOT using Horizon)
+
+If you're **NOT using Horizon**, you **MUST** run queue workers manually:
 
 ### **Start Queue Workers:**
 
@@ -186,7 +251,18 @@ php artisan playground
 
 ## 📊 **QUEUE CONFIGURATION**
 
-The application uses **database queue** by default. Make sure your `.env` has:
+**For Horizon (Recommended):**
+The application uses **Redis queue** with Horizon. Make sure your `.env` has:
+
+```env
+QUEUE_CONNECTION=redis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+```
+
+**If NOT using Horizon:**
+The application can use **database queue** by default. Make sure your `.env` has:
 
 ```env
 QUEUE_CONNECTION=database
@@ -207,11 +283,11 @@ php artisan migrate
 ## ✅ **SETUP CHECKLIST**
 
 - [ ] Add cron job: `* * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1`
-- [ ] Start queue worker: `php artisan queue:work` (or set up Supervisor)
-- [ ] Verify `.env` has `QUEUE_CONNECTION=database`
+- [ ] **Start Horizon:** `php artisan horizon` (or set up Supervisor) **OR** start queue worker: `php artisan queue:work` (if not using Horizon)
+- [ ] Verify `.env` has `QUEUE_CONNECTION=redis` (for Horizon) or `QUEUE_CONNECTION=database` (for manual workers)
 - [ ] Run migrations: `php artisan migrate`
 - [ ] Test scheduler: `php artisan schedule:list` (shows all scheduled tasks)
-- [ ] Test queue: `php artisan queue:work --once` (processes one job)
+- [ ] Test queue: `php artisan queue:work --once` (processes one job) or check Horizon dashboard
 
 ---
 
@@ -293,10 +369,23 @@ php artisan queue:flush
 - Test manually: `php artisan schedule:run`
 
 ### **Queue jobs not processing?**
-- Check queue worker is running: `ps aux | grep queue:work`
-- Check failed jobs: `php artisan queue:failed`
-- Check database connection
-- Verify `jobs` table exists
+- **If using Horizon:**
+  - Check Horizon is running: `ps aux | grep horizon`
+  - Check Horizon dashboard: `http://your-domain.com/horizon`
+  - **Restart Horizon after config changes:** `php artisan horizon:terminate && php artisan horizon`
+  - Check Horizon logs: `storage/logs/horizon.log`
+- **If using manual workers:**
+  - Check queue worker is running: `ps aux | grep queue:work`
+  - Check failed jobs: `php artisan queue:failed`
+  - Check database connection
+  - Verify `jobs` table exists
+
+### **Jobs stuck in "pending" in Horizon?**
+- **This usually means Horizon workers need to be restarted after config changes**
+- Run: `php artisan horizon:terminate` then `php artisan horizon`
+- Or if using Supervisor: `sudo supervisorctl restart linkdominator-horizon`
+- Verify timeout settings in `config/horizon.php` match job timeouts
+- Check that `QUEUE_CONNECTION=redis` in `.env`
 
 ### **Jobs failing?**
 - Check logs: `storage/logs/laravel.log`
