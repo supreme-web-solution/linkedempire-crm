@@ -833,7 +833,9 @@ EOD;
             
             'add_emoji' => "Enhance this LinkedIn post by adding relevant emojis strategically to improve readability and engagement:\n\n{$content}\n\nReturn the FULL post with emojis added.",
             
-            'make_concise' => "Make this LinkedIn post more concise and punchy while keeping the core message. Remove fluff and make every word count:\n\n{$content}\n\nReturn the concise version."
+            'make_concise' => "Make this LinkedIn post more concise and punchy while keeping the core message. Remove fluff and make every word count:\n\n{$content}\n\nReturn the concise version.",
+            
+            'repurpose' => "Repurpose this LinkedIn post content for different formats and audiences. Transform it into a fresh, engaging version that maintains the core message but presents it in a new way. Consider:\n- Different angles or perspectives\n- Alternative formats (story, list, question-based, etc.)\n- Different tone or style\n- New hooks or openings\n- Restructured flow\n\nOriginal post:\n{$content}\n\nReturn the repurposed version that feels fresh and original while keeping the valuable core message."
         ];
 
         $prompt = $prompts[$action] ?? $prompts['add_hook'];

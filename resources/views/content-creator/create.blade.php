@@ -362,9 +362,13 @@
                                         class="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-md transition-colors flex items-center">
                                     <i class="fas fa-compress mr-1"></i>Make Concise
                                 </button>
+                                <button type="button" onclick="improvePost('repurpose')" 
+                                        class="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded-md transition-colors flex items-center">
+                                    <i class="fas fa-recycle mr-1"></i>Repurposing
+                                </button>
                             </div>
                             <p class="text-xs text-gray-500 mt-2">
-                                💡 Click any action to enhance your content with AI
+                                💡 Click any action to enhance your content with AI and add it backend on to repurpose a post
                             </p>
                         </div>
                         

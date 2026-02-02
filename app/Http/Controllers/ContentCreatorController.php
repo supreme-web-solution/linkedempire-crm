@@ -264,7 +264,7 @@ class ContentCreatorController extends Controller
     {
         $request->validate([
             'content' => 'required|string',
-            'action' => 'required|in:add_hook,add_cta,expand,make_viral,add_data,bullet_points,add_story,controversial,add_emoji,make_concise'
+            'action' => 'required|in:add_hook,add_cta,expand,make_viral,add_data,bullet_points,add_story,controversial,add_emoji,make_concise,repurpose'
         ]);
 
         try {
