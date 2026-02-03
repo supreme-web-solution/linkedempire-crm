@@ -28,11 +28,10 @@ const getPieStats = () => {
             // Extract values and convert to numbers
             const anniversaryGreetings = parseInt(res.stats['Anniversary greetings'] || 0);
             const invitationSent = parseInt(res.stats['Invitation sent'] || 0);
-            const postLiked = parseInt(res.stats['Post liked'] || 0);
             const profileViewed = parseInt(res.stats['Profile viwed'] || res.stats['Profile viewed'] || 0);
             
             // Create series array (must be array of numbers for pie charts)
-            const series = [anniversaryGreetings, invitationSent, postLiked, profileViewed];
+            const series = [anniversaryGreetings, invitationSent, profileViewed];
             
             // Check if all values are zero
             const total = series.reduce((a, b) => a + b, 0);
@@ -63,9 +62,9 @@ const getPieStats = () => {
                     },
                     height: 300
                 },
-                colors: ['#0077b5', '#005885', '#004d6f', '#003d59'],
+                colors: ['#0077b5', '#005885', '#004d6f'],
                 series: series, // Array of numbers
-                labels: ['Anniversary greetings', 'Invitation sent', 'Post liked', 'Profile viewed'],
+                labels: ['Anniversary greetings', 'Invitation sent', 'Profile viewed'],
                 legend: {
                     position: 'bottom',
                     fontSize: '12px'
