@@ -731,8 +731,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Fetch status polling (similar to competitor followers)
     let fetchStatusInterval = null;
+    let hasShownCompletion = false; // Flag to prevent multiple reloads
+    let initialStatus = null; // Track initial status on page load
     
-    function updateFetchStatus() {
+    function updateFetchStatus(isInitialCheck = false) {
         fetch('/inspiration/fetch/status', {
             method: 'GET',
             headers: {
@@ -746,6 +748,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const statusBadge = document.getElementById('fetch-status-badge');
             const statusText = document.getElementById('fetch-status-text');
             const progressText = document.getElementById('fetch-progress-text');
+            
+            // Store initial status on first check
+            if (isInitialCheck) {
+                initialStatus = data.status;
+            }
             
             if (!data.status || data.status === null) {
                 // No fetch in progress
@@ -779,16 +786,51 @@ document.addEventListener('DOMContentLoaded', function() {
                     statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Fetch completed';
                     progressText.textContent = data.new_posts ? `+${data.new_posts} new posts` : 'Completed';
                     
-                    // Stop polling
+                    // Stop polling immediately
                     if (fetchStatusInterval) {
                         clearInterval(fetchStatusInterval);
                         fetchStatusInterval = null;
                     }
                     
-                    // Reload page after 2 seconds to show new posts
-                    setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                    // Only reload if this is a NEW completion (not already completed when page loaded)
+                    // If status was already completed on page load, just show the message and clear it
+                    if (!hasShownCompletion) {
+                        hasShownCompletion = true;
+                        
+                        // If it was already completed when page loaded, just clear it and don't reload
+                        if (initialStatus === 'completed') {
+                            // Clear the status on server
+                            fetch('/inspiration/fetch/status?clear=1', {
+                                method: 'GET',
+                                headers: {
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'Accept': 'application/json'
+                                }
+                            }).catch(err => console.error('Error clearing status:', err));
+                            
+                            // Hide status after 5 seconds
+                            setTimeout(() => {
+                                if (statusContainer) {
+                                    statusContainer.classList.add('hidden');
+                                }
+                            }, 5000);
+                        } else {
+                            // This is a NEW completion - reload to show new posts
+                            // Clear the status on server first
+                            fetch('/inspiration/fetch/status?clear=1', {
+                                method: 'GET',
+                                headers: {
+                                    'X-CSRF-TOKEN': csrfToken,
+                                    'Accept': 'application/json'
+                                }
+                            }).catch(err => console.error('Error clearing status:', err));
+                            
+                            // Reload page after 2 seconds to show new posts (only once)
+                            setTimeout(() => {
+                                location.reload();
+                            }, 2000);
+                        }
+                    }
                 } else if (data.status === 'failed') {
                     statusBadge.classList.add('bg-red-100', 'text-red-800');
                     statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg> Fetch failed';
@@ -807,12 +849,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Start polling if there's a fetch in progress
-    updateFetchStatus();
+    // Start polling - check initial status first
+    updateFetchStatus(true);
     
     // Poll every 3 seconds if status is pending or processing
     fetchStatusInterval = setInterval(() => {
-        updateFetchStatus();
+        updateFetchStatus(false);
     }, 3000);
     
     // Clean up on page unload

@@ -194,6 +194,20 @@ class InspirationController extends Controller
         
         $fetchMeta = json_decode($preferences->fetch_meta ?? '{}', true);
         
+        // If request wants to clear status (after showing completion)
+        if ($request->has('clear') && $request->boolean('clear')) {
+            $fetchMeta['fetch_status'] = null;
+            $fetchMeta['fetch_progress'] = null;
+            $preferences->fetch_meta = json_encode($fetchMeta);
+            $preferences->save();
+            
+            return response()->json([
+                'status' => null,
+                'progress' => null,
+                'cleared' => true
+            ]);
+        }
+        
         return response()->json([
             'status' => $fetchMeta['fetch_status'] ?? null,
             'progress' => $fetchMeta['fetch_progress'] ?? null,
