@@ -19,6 +19,7 @@ class UserContentPreference extends Model
         'fetch_from_creators',
         'fetch_from_keywords',
         'smart_fetch',
+        'fetch_meta',
     ];
 
     protected $casts = [

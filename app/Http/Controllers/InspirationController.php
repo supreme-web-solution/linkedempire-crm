@@ -7,7 +7,6 @@ use App\Models\UserContentPreference;
 use App\Services\ChatGPT;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 
 class InspirationController extends Controller
@@ -85,7 +84,7 @@ class InspirationController extends Controller
             'smart_fetch' => 'nullable|boolean',
         ]);
 
-        auth()->user()->contentPreferences()->updateOrCreate(
+        $preferences = auth()->user()->contentPreferences()->updateOrCreate(
             ['user_id' => auth()->id()],
             [
                 // Industries are now optional – default to empty array if not provided
@@ -98,44 +97,112 @@ class InspirationController extends Controller
             ]
         );
         
-        // Get count before fetching
-        $postsBefore = ViralPost::where('user_id', auth()->id())->count();
+        // Set initial fetch status to pending
+        $fetchMeta = json_decode($preferences->fetch_meta ?? '{}', true);
+        $fetchMeta['fetch_status'] = 'pending';
+        $fetchMeta['fetch_started_at'] = now()->toIso8601String();
+        $fetchMeta['fetch_progress'] = 'Job queued...';
+        $preferences->fetch_meta = json_encode($fetchMeta);
+        $preferences->save();
         
-        // Trigger immediate fetch for this user
+        // Dispatch job to background queue
         try {
-            Log::info('Triggering immediate fetch for user after preferences save', [
+            \App\Jobs\FetchInspirationPostsJob::dispatch(
+                auth()->id(),
+                50, // limit
+                5   // keywords
+            )->onQueue('default');
+            
+            Log::info('Dispatched FetchInspirationPostsJob for user', [
                 'user_id' => auth()->id(),
                 'user_name' => auth()->user()->name
             ]);
             
-            // Run the fetch command for this specific user
-            // Use --limit to keep it reasonable (50 posts)
-            Artisan::call('app:fetch-linkedin-feeds', [
-                '--user' => auth()->id(),
-                '--limit' => 50,
-                '--keywords' => 5
-            ]);
-            
-            // Get count after fetching
-            $postsAfter = ViralPost::where('user_id', auth()->id())->count();
-            $newPosts = $postsAfter - $postsBefore;
-            
-            if ($newPosts > 0) {
-                return redirect()->back()->with('success', "Preferences saved! Fetched {$newPosts} new viral posts for you.");
-            } else {
-                return redirect()->back()->with('success', 'Preferences saved! Fetch completed. No new posts found matching your criteria.');
-            }
+            return redirect()->back()->with('success', 'Preferences saved! Fetching posts in the background...');
         } catch (\Exception $e) {
-            Log::error('Failed to fetch posts after preferences save', [
+            Log::error('Failed to dispatch fetch job', [
                 'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
             
-            // Still return success for preferences save, but note fetch issue
-            return redirect()->back()->with('success', 'Preferences saved! However, there was an issue fetching posts. They will be fetched automatically later.')
-                                  ->with('warning', 'Fetch error: ' . $e->getMessage());
+            return redirect()->back()->with('success', 'Preferences saved! However, there was an issue starting the fetch. Please try again.')
+                              ->with('warning', 'Error: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Trigger fetch manually (API endpoint)
+     */
+    public function triggerFetch(Request $request)
+    {
+        $user = auth()->user();
+        
+        $preferences = $user->contentPreferences;
+        if (!$preferences) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Please set your preferences first'
+            ], 400);
+        }
+        
+        // Set initial fetch status to pending
+        $fetchMeta = json_decode($preferences->fetch_meta ?? '{}', true);
+        $fetchMeta['fetch_status'] = 'pending';
+        $fetchMeta['fetch_started_at'] = now()->toIso8601String();
+        $fetchMeta['fetch_progress'] = 'Job queued...';
+        $preferences->fetch_meta = json_encode($fetchMeta);
+        $preferences->save();
+        
+        // Dispatch job
+        try {
+            \App\Jobs\FetchInspirationPostsJob::dispatch(
+                $user->id,
+                50,
+                5
+            )->onQueue('default');
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Fetch started in background'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to dispatch fetch job', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to start fetch: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get fetch status (API endpoint)
+     */
+    public function getFetchStatus(Request $request)
+    {
+        $preferences = auth()->user()->contentPreferences;
+        
+        if (!$preferences) {
+            return response()->json([
+                'status' => null,
+                'progress' => null
+            ]);
+        }
+        
+        $fetchMeta = json_decode($preferences->fetch_meta ?? '{}', true);
+        
+        return response()->json([
+            'status' => $fetchMeta['fetch_status'] ?? null,
+            'progress' => $fetchMeta['fetch_progress'] ?? null,
+            'fetch_started_at' => $fetchMeta['fetch_started_at'] ?? null,
+            'fetch_completed_at' => $fetchMeta['fetch_completed_at'] ?? null,
+            'fetch_failed_at' => $fetchMeta['fetch_failed_at'] ?? null,
+            'new_posts' => $fetchMeta['new_posts'] ?? null,
+            'total_fetched' => $fetchMeta['total_fetched'] ?? null
+        ]);
     }
 
     /**

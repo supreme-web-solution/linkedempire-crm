@@ -24,6 +24,13 @@
     <div>
         <h2 class="text-2xl font-bold text-gray-800">💡 Inspiration Library</h2>
         <p class="text-sm text-gray-500 mt-1">Discover viral LinkedIn posts and use them as inspiration</p>
+        <!-- Fetch Status Badge -->
+        <div id="fetch-status-container" class="mt-2 hidden">
+            <span id="fetch-status-badge" class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium">
+                <span id="fetch-status-text"></span>
+                <span id="fetch-progress-text" class="text-xs text-gray-600 ml-2"></span>
+            </span>
+        </div>
     </div>
     <a href="{{ route('content-creator.create') }}" 
        class="text-white px-4 py-2 rounded-lg font-medium transition-all" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';">
@@ -727,6 +734,99 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Fetch status polling (similar to competitor followers)
+    let fetchStatusInterval = null;
+    
+    function updateFetchStatus() {
+        fetch('/inspiration/fetch/status', {
+            method: 'GET',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const statusContainer = document.getElementById('fetch-status-container');
+            const statusBadge = document.getElementById('fetch-status-badge');
+            const statusText = document.getElementById('fetch-status-text');
+            const progressText = document.getElementById('fetch-progress-text');
+            
+            if (!data.status || data.status === null) {
+                // No fetch in progress
+                if (statusContainer) {
+                    statusContainer.classList.add('hidden');
+                }
+                if (fetchStatusInterval) {
+                    clearInterval(fetchStatusInterval);
+                    fetchStatusInterval = null;
+                }
+                return;
+            }
+            
+            // Show status container
+            if (statusContainer) {
+                statusContainer.classList.remove('hidden');
+            }
+            
+            // Update badge based on status
+            if (statusBadge && statusText && progressText) {
+                statusBadge.className = 'inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium';
+                
+                if (data.status === 'pending' || data.status === 'processing') {
+                    statusBadge.classList.add('bg-blue-100', 'text-blue-800');
+                    statusText.innerHTML = data.status === 'pending' 
+                        ? '<svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Fetching posts...'
+                        : '<svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
+                    progressText.textContent = data.progress || '';
+                } else if (data.status === 'completed') {
+                    statusBadge.classList.add('bg-green-100', 'text-green-800');
+                    statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Fetch completed';
+                    progressText.textContent = data.new_posts ? `+${data.new_posts} new posts` : 'Completed';
+                    
+                    // Stop polling
+                    if (fetchStatusInterval) {
+                        clearInterval(fetchStatusInterval);
+                        fetchStatusInterval = null;
+                    }
+                    
+                    // Reload page after 2 seconds to show new posts
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else if (data.status === 'failed') {
+                    statusBadge.classList.add('bg-red-100', 'text-red-800');
+                    statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg> Fetch failed';
+                    progressText.textContent = data.progress || 'Error occurred';
+                    
+                    // Stop polling
+                    if (fetchStatusInterval) {
+                        clearInterval(fetchStatusInterval);
+                        fetchStatusInterval = null;
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error checking fetch status:', error);
+        });
+    }
+    
+    // Start polling if there's a fetch in progress
+    updateFetchStatus();
+    
+    // Poll every 3 seconds if status is pending or processing
+    fetchStatusInterval = setInterval(() => {
+        updateFetchStatus();
+    }, 3000);
+    
+    // Clean up on page unload
+    window.addEventListener('beforeunload', function() {
+        if (fetchStatusInterval) {
+            clearInterval(fetchStatusInterval);
+        }
+    });
 });
 
 // Use viral post as inspiration (copy to Content Creator)

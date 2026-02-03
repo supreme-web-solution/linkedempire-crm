@@ -255,6 +255,8 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/inspiration/use/{id}', 'useAsInspiration')->name('inspiration.use');
         Route::post('/inspiration/remix/{id}', 'remix')->name('inspiration.remix');
         Route::get('/inspiration/categories', 'getCategories')->name('inspiration.categories');
+        Route::post('/inspiration/fetch', 'triggerFetch')->name('inspiration.fetch');
+        Route::get('/inspiration/fetch/status', 'getFetchStatus')->name('inspiration.fetch.status');
     });
 
     Route::controller(SchedulePostController::class)->group(function (){
