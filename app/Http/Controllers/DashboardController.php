@@ -38,12 +38,24 @@ class DashboardController extends Controller
     {
         $query = "sum(case when module_name='Invitation sent' then 1 else 0 end) as 'Invitation sent',
         sum(case when module_name='Profile viwed' then 1 else 0 end) as 'Profile viwed',
+        sum(case when module_name='Profile viewed' then 1 else 0 end) as 'Profile viewed',
         sum(case when module_name='Anniversary greetings' then 1 else 0 end) as 'Anniversary greetings',
         sum(case when module_name='Post liked' then 1 else 0 end) as 'Post liked'";
 
         $stats = UserActivity::select(DB::raw($query))
             ->where('user_id', auth()->user()->id)
             ->first();
+
+        // Ensure we always return an object, even if null
+        if (!$stats) {
+            $stats = (object)[
+                'Invitation sent' => 0,
+                'Profile viwed' => 0,
+                'Profile viewed' => 0,
+                'Anniversary greetings' => 0,
+                'Post liked' => 0
+            ];
+        }
 
         return response()->json([
             'stats' => $stats
