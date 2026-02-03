@@ -731,10 +731,18 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Fetch status polling (similar to competitor followers)
     let fetchStatusInterval = null;
-    let hasShownCompletion = false; // Flag to prevent multiple reloads
-    let initialStatus = null; // Track initial status on page load
+    let hasHandledCompletion = sessionStorage.getItem('inspiration_fetch_completed') === 'true'; // Use sessionStorage to persist across reloads
     
-    function updateFetchStatus(isInitialCheck = false) {
+    function updateFetchStatus() {
+        // Don't poll if we've already handled completion
+        if (hasHandledCompletion) {
+            if (fetchStatusInterval) {
+                clearInterval(fetchStatusInterval);
+                fetchStatusInterval = null;
+            }
+            return;
+        }
+        
         fetch('/inspiration/fetch/status', {
             method: 'GET',
             headers: {
@@ -748,11 +756,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const statusBadge = document.getElementById('fetch-status-badge');
             const statusText = document.getElementById('fetch-status-text');
             const progressText = document.getElementById('fetch-progress-text');
-            
-            // Store initial status on first check
-            if (isInitialCheck) {
-                initialStatus = data.status;
-            }
             
             if (!data.status || data.status === null) {
                 // No fetch in progress
@@ -782,55 +785,57 @@ document.addEventListener('DOMContentLoaded', function() {
                         : '<svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Processing...';
                     progressText.textContent = data.progress || '';
                 } else if (data.status === 'completed') {
-                    statusBadge.classList.add('bg-green-100', 'text-green-800');
-                    statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Fetch completed';
-                    progressText.textContent = data.new_posts ? `+${data.new_posts} new posts` : 'Completed';
-                    
-                    // Stop polling immediately
+                    // Stop polling IMMEDIATELY and mark as handled
                     if (fetchStatusInterval) {
                         clearInterval(fetchStatusInterval);
                         fetchStatusInterval = null;
                     }
+                    hasHandledCompletion = true;
                     
-                    // Only reload if this is a NEW completion (not already completed when page loaded)
-                    // If status was already completed on page load, just show the message and clear it
-                    if (!hasShownCompletion) {
-                        hasShownCompletion = true;
-                        
-                        // If it was already completed when page loaded, just clear it and don't reload
-                        if (initialStatus === 'completed') {
-                            // Clear the status on server
-                            fetch('/inspiration/fetch/status?clear=1', {
-                                method: 'GET',
-                                headers: {
-                                    'X-CSRF-TOKEN': csrfToken,
-                                    'Accept': 'application/json'
-                                }
-                            }).catch(err => console.error('Error clearing status:', err));
-                            
-                            // Hide status after 5 seconds
+                    statusBadge.classList.add('bg-green-100', 'text-green-800');
+                    statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Fetch completed';
+                    progressText.textContent = data.new_posts ? `+${data.new_posts} new posts` : 'Completed';
+                    
+                    // Check if this was already completed when page loaded
+                    const wasAlreadyCompleted = sessionStorage.getItem('inspiration_page_loaded_with_completed') === 'true';
+                    
+                    // Clear the status on server IMMEDIATELY
+                    fetch('/inspiration/fetch/status?clear=1', {
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json'
+                        }
+                    }).then(() => {
+                        // If it was already completed on page load, don't reload - just hide after showing
+                        if (wasAlreadyCompleted) {
                             setTimeout(() => {
                                 if (statusContainer) {
                                     statusContainer.classList.add('hidden');
                                 }
+                                sessionStorage.removeItem('inspiration_page_loaded_with_completed');
+                                sessionStorage.removeItem('inspiration_fetch_completed');
                             }, 5000);
                         } else {
-                            // This is a NEW completion - reload to show new posts
-                            // Clear the status on server first
-                            fetch('/inspiration/fetch/status?clear=1', {
-                                method: 'GET',
-                                headers: {
-                                    'X-CSRF-TOKEN': csrfToken,
-                                    'Accept': 'application/json'
-                                }
-                            }).catch(err => console.error('Error clearing status:', err));
-                            
-                            // Reload page after 2 seconds to show new posts (only once)
+                            // This is a NEW completion during polling - reload once to show new posts
+                            sessionStorage.setItem('inspiration_fetch_completed', 'true');
                             setTimeout(() => {
                                 location.reload();
                             }, 2000);
                         }
-                    }
+                    }).catch(err => {
+                        console.error('Error clearing status:', err);
+                        // Even if clear fails, don't reload if already completed
+                        if (wasAlreadyCompleted) {
+                            setTimeout(() => {
+                                if (statusContainer) {
+                                    statusContainer.classList.add('hidden');
+                                }
+                                sessionStorage.removeItem('inspiration_page_loaded_with_completed');
+                                sessionStorage.removeItem('inspiration_fetch_completed');
+                            }, 5000);
+                        }
+                    });
                 } else if (data.status === 'failed') {
                     statusBadge.classList.add('bg-red-100', 'text-red-800');
                     statusText.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg> Fetch failed';
@@ -849,13 +854,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Start polling - check initial status first
-    updateFetchStatus(true);
-    
-    // Poll every 3 seconds if status is pending or processing
-    fetchStatusInterval = setInterval(() => {
-        updateFetchStatus(false);
-    }, 3000);
+    // Check initial status on page load
+    fetch('/inspiration/fetch/status', {
+        method: 'GET',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // If status is already completed on page load, mark it
+        if (data.status === 'completed') {
+            sessionStorage.setItem('inspiration_page_loaded_with_completed', 'true');
+        }
+        
+        // Start polling
+        updateFetchStatus();
+        
+        // Poll every 3 seconds if status is pending or processing
+        if (!hasHandledCompletion && (data.status === 'pending' || data.status === 'processing')) {
+            fetchStatusInterval = setInterval(() => {
+                updateFetchStatus();
+            }, 3000);
+        }
+    })
+    .catch(error => {
+        console.error('Error checking initial status:', error);
+    });
     
     // Clean up on page unload
     window.addEventListener('beforeunload', function() {
