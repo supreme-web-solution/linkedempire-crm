@@ -412,12 +412,20 @@
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     @forelse($posts as $post)
     <div class="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-all relative overflow-hidden" style="max-width: 100%;">
-        <!-- Engagement Badge -->
+        <!-- Engagement Badge or Delete Button -->
         <div class="absolute top-2 right-2 z-10">
+            @if($post->engagement_rate > 0)
             <span class="px-2 py-0.5 rounded text-xs font-semibold shadow-sm text-white @if($post->engagement_rate >= 10) bg-red-500 @endif" @if($post->engagement_rate < 10) style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" @endif>
                 @if($post->engagement_rate >= 10) 🔥 @elseif($post->engagement_rate >= 5) ⚡ @else ✨ @endif
                 {{ number_format($post->engagement_rate, 1) }}%
             </span>
+            @else
+            <button onclick="deletePost({{ $post->id }}, event)" 
+                    class="px-2 py-0.5 rounded text-xs font-semibold shadow-sm bg-red-500 hover:bg-red-600 text-white transition-colors"
+                    title="Delete post">
+                <i class="fas fa-trash"></i>
+            </button>
+            @endif
         </div>
 
         <!-- Favorite Star -->
@@ -558,7 +566,7 @@
 @endif
 
 <!-- Remix Modal -->
-<div id="remixModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50">
+<div id="remixModal" class="fixed inset-0 bg-gray-600/50 hidden z-50">
     <div class="flex items-center justify-center min-h-screen p-4">
         <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div class="p-6">
@@ -734,7 +742,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let hasHandledCompletion = sessionStorage.getItem('inspiration_fetch_completed') === 'true'; // Use sessionStorage to persist across reloads
     
     function updateFetchStatus() {
-        // Don't poll if we've already handled completion
+        // Don't poll if we've already handled completion for this session
         if (hasHandledCompletion) {
             if (fetchStatusInterval) {
                 clearInterval(fetchStatusInterval);
@@ -872,11 +880,17 @@ document.addEventListener('DOMContentLoaded', function() {
         // Start polling
         updateFetchStatus();
         
-        // Poll every 3 seconds if status is pending or processing
-        if (!hasHandledCompletion && (data.status === 'pending' || data.status === 'processing')) {
-            fetchStatusInterval = setInterval(() => {
-                updateFetchStatus();
-            }, 3000);
+        // Always start polling if status is pending or processing (keep polling until completed or failed)
+        // Don't check hasHandledCompletion here - let updateFetchStatus handle it
+        if (data.status === 'pending' || data.status === 'processing') {
+            if (!fetchStatusInterval) {
+                fetchStatusInterval = setInterval(() => {
+                    updateFetchStatus();
+                }, 3000);
+            }
+        } else if (data.status === 'completed' || data.status === 'failed') {
+            // If already completed/failed, handle it immediately (no need to poll)
+            // updateFetchStatus will handle it
         }
     })
     .catch(error => {
@@ -1015,17 +1029,38 @@ function toggleFavorite(postId) {
 }
 
 // Delete post
-function deletePost(postId) {
+function deletePost(postId, event) {
     if (confirm('Remove this post from your inspiration library?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = `/inspiration/delete/${postId}`;
-        form.innerHTML = `
-            @csrf
-            @method('DELETE')
-        `;
-        document.body.appendChild(form);
-        form.submit();
+        fetch(`/inspiration/delete/${postId}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Remove the post card from the page
+                const postCard = event.target.closest('.bg-white.rounded-lg');
+                if (postCard) {
+                    postCard.style.transition = 'opacity 0.3s';
+                    postCard.style.opacity = '0';
+                    setTimeout(() => {
+                        postCard.remove();
+                    }, 300);
+                } else {
+                    // Fallback: reload page
+                    location.reload();
+                }
+            } else {
+                alert('Failed to delete post. Please try again.');
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting post:', error);
+            alert('An error occurred while deleting the post.');
+        });
     }
 }
 </script>
