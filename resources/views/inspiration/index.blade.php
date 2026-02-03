@@ -314,12 +314,6 @@
             </div>
         </form>
         
-        <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p class="text-sm text-blue-800">
-                <i class="fas fa-info-circle mr-1"></i>
-                <strong>How it works:</strong> When you save your preferences, the system will immediately fetch viral posts matching your criteria. Posts are also automatically fetched twice daily at 12:15 PM and 6:15 PM.
-            </p>
-        </div>
     </div>
 </div>
 
