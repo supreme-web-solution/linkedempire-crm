@@ -652,7 +652,17 @@ function updateCooldownUI(buttonId) {
     if (!button) return;
     
     const cooldownEnd = localStorage.getItem('aiCooldown_' + buttonId);
-    if (!cooldownEnd) return;
+    if (!cooldownEnd) {
+        // No cooldown, ensure button is in normal state
+        if (buttonId === 'generateBtn') {
+            const generateText = document.getElementById('generateText');
+            const generateLoading = document.getElementById('generateLoading');
+            button.disabled = false;
+            generateText.classList.remove('hidden');
+            generateLoading.classList.add('hidden');
+        }
+        return;
+    }
     
     const timeLeft = Math.max(0, cooldownEnd - Date.now());
     
@@ -660,19 +670,42 @@ function updateCooldownUI(buttonId) {
         const secondsLeft = Math.ceil(timeLeft / 1000);
         button.disabled = true;
         
-        // Store original content
+        // Store original content (use the normal state, not loading state)
         if (!button.dataset.originalText) {
-            button.dataset.originalText = button.innerHTML;
+            // Get the normal state from generateText element
+            if (buttonId === 'generateBtn') {
+                const generateText = document.getElementById('generateText');
+                button.dataset.originalText = generateText.innerHTML;
+            } else {
+                button.dataset.originalText = button.innerHTML;
+            }
+        }
+        
+        // Hide loading state and show cooldown
+        if (buttonId === 'generateBtn') {
+            const generateText = document.getElementById('generateText');
+            const generateLoading = document.getElementById('generateLoading');
+            generateText.classList.add('hidden');
+            generateLoading.classList.add('hidden');
         }
         
         button.innerHTML = `<i class="fas fa-clock mr-2"></i>Wait ${secondsLeft}s`;
         
         setTimeout(() => updateCooldownUI(buttonId), 1000);
     } else {
-        // Cooldown ended
+        // Cooldown ended - restore to normal state
         button.disabled = false;
         if (button.dataset.originalText) {
-            button.innerHTML = button.dataset.originalText;
+            if (buttonId === 'generateBtn') {
+                // Restore normal state using generateText element
+                const generateText = document.getElementById('generateText');
+                const generateLoading = document.getElementById('generateLoading');
+                generateText.classList.remove('hidden');
+                generateLoading.classList.add('hidden');
+                button.innerHTML = generateText.innerHTML;
+            } else {
+                button.innerHTML = button.dataset.originalText;
+            }
         }
         localStorage.removeItem('aiCooldown_' + buttonId);
     }
@@ -797,6 +830,14 @@ document.getElementById('aiGenerateForm').addEventListener('submit', function(e)
     }
     
     const multipleDrafts = document.getElementById('multipleDrafts').checked;
+    const generateBtn = document.getElementById('generateBtn');
+    const generateText = document.getElementById('generateText');
+    const generateLoading = document.getElementById('generateLoading');
+    
+    // Show loading state
+    generateBtn.disabled = true;
+    generateText.classList.add('hidden');
+    generateLoading.classList.remove('hidden');
     
     showLoading();
     
@@ -817,6 +858,11 @@ document.getElementById('aiGenerateForm').addEventListener('submit', function(e)
     .then(data => {
         hideLoading();
         
+        // Reset button loading state first
+        generateBtn.disabled = false;
+        generateText.classList.remove('hidden');
+        generateLoading.classList.add('hidden');
+        
         if (data.success) {
             if (data.drafts && data.drafts.length > 0) {
                 // Show multiple drafts
@@ -832,7 +878,7 @@ document.getElementById('aiGenerateForm').addEventListener('submit', function(e)
                 document.getElementById('showImproveBtn').classList.add('hidden');
             }
             
-            // Start 60-second cooldown after successful generation
+            // Start cooldown after successful generation (this will handle button state)
             startAICooldown('generateBtn');
         } else {
             alert('Error: ' + data.message);
@@ -840,6 +886,10 @@ document.getElementById('aiGenerateForm').addEventListener('submit', function(e)
     })
     .catch(error => {
         hideLoading();
+        // Reset button loading state on error
+        generateBtn.disabled = false;
+        generateText.classList.remove('hidden');
+        generateLoading.classList.add('hidden');
         console.error('Error:', error);
         alert('An error occurred while generating content.');
     });
@@ -1174,26 +1224,7 @@ function clearVideo() {
     document.getElementById('videoSource').src = '';
 }
 
-// AI Generate form submission handler with loading state
-document.getElementById('aiGenerateForm').addEventListener('submit', function(e) {
-    const generateBtn = document.getElementById('generateBtn');
-    const generateText = document.getElementById('generateText');
-    const generateLoading = document.getElementById('generateLoading');
-    
-    // Show loading state
-    generateBtn.disabled = true;
-    generateText.classList.add('hidden');
-    generateLoading.classList.remove('hidden');
-    
-    // Reset loading state after 30 seconds if something goes wrong
-    setTimeout(() => {
-        if (generateBtn.disabled) {
-            generateBtn.disabled = false;
-            generateText.classList.remove('hidden');
-            generateLoading.classList.add('hidden');
-        }
-    }, 30000);
-});
+// Note: Loading state is now handled in the main form submission handler above
 
 // Main form submission handler with loading state
 document.getElementById('postForm').addEventListener('submit', function(e) {
