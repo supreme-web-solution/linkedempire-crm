@@ -262,15 +262,31 @@ class LinkedInCompetitorController extends Controller
 
     /**
      * Get count of pending email fetch jobs for a user
+     * Excludes jobs that have been stuck for more than 10 minutes
      */
     private function getPendingEmailFetchCount($userId)
     {
         // Get all audience_ids for this user
         $userAudienceIds = Audience::where('user_id', $userId)->pluck('audience_id')->toArray();
         
-        // Count AudienceList records with pending status for this user's audiences
+        // Reset stuck jobs (pending/processing for more than 10 minutes)
+        $stuckCutoff = now()->subMinutes(10);
+        AudienceList::whereIn('audience_id', $userAudienceIds)
+            ->whereIn('email_fetch_status', ['pending', 'processing'])
+            ->where(function($query) use ($stuckCutoff) {
+                $query->where('email_fetch_attempted_at', '<', $stuckCutoff)
+                      ->orWhereNull('email_fetch_attempted_at');
+            })
+            ->update([
+                'email_fetch_status' => null,
+                'email_fetch_attempted_at' => null
+            ]);
+        
+        // Count AudienceList records with pending/processing status for this user's audiences
+        // Only count jobs that started within the last 10 minutes
         return AudienceList::whereIn('audience_id', $userAudienceIds)
-            ->where('email_fetch_status', 'pending')
+            ->whereIn('email_fetch_status', ['pending', 'processing'])
+            ->where('email_fetch_attempted_at', '>=', $stuckCutoff)
             ->count();
     }
 

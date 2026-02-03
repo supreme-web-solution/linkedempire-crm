@@ -76,12 +76,28 @@ class FetchAudienceEmailJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        // Job has already been marked as failed, just log it
-        Log::error('FetchAudienceEmailJob: Job failed permanently', [
-            'audience_list_id' => $this->audienceListItemId,
-            'public_identifier' => $this->publicIdentifier,
-            'error' => $exception->getMessage()
-        ]);
+        $audienceListItem = AudienceList::find($this->audienceListItemId);
+        
+        if ($audienceListItem) {
+            // Reset status to null so user can retry
+            $audienceListItem->update([
+                'email_fetch_status' => null,
+                'email_fetch_attempted_at' => null
+            ]);
+            
+            Log::warning('FetchAudienceEmailJob: Job failed permanently - status reset for retry', [
+                'audience_list_id' => $this->audienceListItemId,
+                'public_identifier' => $this->publicIdentifier,
+                'error' => $exception->getMessage(),
+                'action' => 'Status reset to null - user can retry'
+            ]);
+        } else {
+            Log::error('FetchAudienceEmailJob: Job failed permanently (item not found)', [
+                'audience_list_id' => $this->audienceListItemId,
+                'public_identifier' => $this->publicIdentifier,
+                'error' => $exception->getMessage()
+            ]);
+        }
     }
 
     /**
@@ -99,8 +115,16 @@ class FetchAudienceEmailJob implements ShouldQueue
                 return;
             }
 
+            // Update status to processing when job starts
+            $audienceListItem->update([
+                'email_fetch_status' => 'processing'
+            ]);
+
             // Skip if email already exists
             if (!empty($audienceListItem->con_email)) {
+                $audienceListItem->update([
+                    'email_fetch_status' => 'completed'
+                ]);
                 Log::info('FetchAudienceEmailJob: Email already exists, skipping', [
                     'audience_list_id' => $this->audienceListItemId
                 ]);
