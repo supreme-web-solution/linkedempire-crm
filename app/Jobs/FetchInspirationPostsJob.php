@@ -23,20 +23,19 @@ class FetchInspirationPostsJob implements ShouldQueue
      */
     public int $timeout = 600; // 10 minutes
 
-    /**
-     * The name of the queue the job should be sent to.
-     */
-    public string $queue = 'default';
-
     public int $userId;
     public int $limit;
     public int $keywords;
-
+    
+    /**
+     * Create a new job instance.
+     */
     public function __construct(int $userId, int $limit = 50, int $keywords = 5)
     {
         $this->userId = $userId;
         $this->limit = $limit;
         $this->keywords = $keywords;
+        $this->onQueue('default'); // Set queue in constructor
     }
 
     public function handle(): void
