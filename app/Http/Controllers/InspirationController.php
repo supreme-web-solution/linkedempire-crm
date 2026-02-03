@@ -7,6 +7,8 @@ use App\Models\UserContentPreference;
 use App\Services\ChatGPT;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 
 class InspirationController extends Controller
 {
@@ -96,7 +98,44 @@ class InspirationController extends Controller
             ]
         );
         
-        return redirect()->back()->with('success', 'Preferences saved!');
+        // Get count before fetching
+        $postsBefore = ViralPost::where('user_id', auth()->id())->count();
+        
+        // Trigger immediate fetch for this user
+        try {
+            Log::info('Triggering immediate fetch for user after preferences save', [
+                'user_id' => auth()->id(),
+                'user_name' => auth()->user()->name
+            ]);
+            
+            // Run the fetch command for this specific user
+            // Use --limit to keep it reasonable (50 posts)
+            Artisan::call('app:fetch-linkedin-feeds', [
+                '--user' => auth()->id(),
+                '--limit' => 50,
+                '--keywords' => 5
+            ]);
+            
+            // Get count after fetching
+            $postsAfter = ViralPost::where('user_id', auth()->id())->count();
+            $newPosts = $postsAfter - $postsBefore;
+            
+            if ($newPosts > 0) {
+                return redirect()->back()->with('success', "Preferences saved! Fetched {$newPosts} new viral posts for you.");
+            } else {
+                return redirect()->back()->with('success', 'Preferences saved! Fetch completed. No new posts found matching your criteria.');
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch posts after preferences save', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            // Still return success for preferences save, but note fetch issue
+            return redirect()->back()->with('success', 'Preferences saved! However, there was an issue fetching posts. They will be fetched automatically later.')
+                                  ->with('warning', 'Fetch error: ' . $e->getMessage());
+        }
     }
 
     /**

@@ -314,6 +314,7 @@ $(document).ready(function() {
             return;
         }
         
+        // Checkbox is optional - delete will work regardless
         const deleteAudience = $('#delete-audience-checkbox').is(':checked');
         const btn = $(this);
         const originalText = btn.text();
@@ -328,6 +329,9 @@ $(document).ready(function() {
                 delete_audience: deleteAudience ? 1 : 0
             },
             success: function(response) {
+                // Reset button state first
+                btn.prop('disabled', false).text(originalText);
+                
                 if (response.status === 'success') {
                     // Remove the row from table
                     $(`.delete-audience-btn[data-audience-id="${currentAudienceId}"]`).closest('tr').fadeOut(300, function() {
@@ -343,21 +347,22 @@ $(document).ready(function() {
                         });
                     }, 3000);
                     
-                    // Close modal
+                    // Close modal and reset state
                     $('#delete-audience-modal').addClass('hidden');
                     currentAudienceId = null;
                 } else {
                     alert(response.message || 'Failed to delete audience');
-                    btn.prop('disabled', false).text(originalText);
                 }
             },
             error: function(xhr) {
+                // Reset button state on error
+                btn.prop('disabled', false).text(originalText);
+                
                 let errorMessage = 'Failed to delete audience. Please try again.';
                 if (xhr.responseJSON && xhr.responseJSON.message) {
                     errorMessage = xhr.responseJSON.message;
                 }
                 alert(errorMessage);
-                btn.prop('disabled', false).text(originalText);
             }
         });
     });

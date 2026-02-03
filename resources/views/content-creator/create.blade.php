@@ -642,7 +642,22 @@ function toggleImproveActions() {
 
 // 🔥 AI Cooldown System (15 seconds)
 function startAICooldown(buttonId) {
-    const cooldownEnd = Date.now() + 5000; // 10 seconds from now
+    const button = document.getElementById(buttonId);
+    if (button) {
+        // Store original HTML before starting cooldown (ensures we capture normal state)
+        if (buttonId === 'generateBtn') {
+            // Store the complete button HTML with both spans in normal state
+            const generateText = document.getElementById('generateText');
+            const generateLoading = document.getElementById('generateLoading');
+            if (generateText && generateLoading) {
+                // Ensure normal state is visible before storing
+                generateText.classList.remove('hidden');
+                generateLoading.classList.add('hidden');
+                button.dataset.originalHTML = button.innerHTML;
+            }
+        }
+    }
+    const cooldownEnd = Date.now() + 5000; // 5 seconds from now
     localStorage.setItem('aiCooldown_' + buttonId, cooldownEnd);
     updateCooldownUI(buttonId);
 }
@@ -657,9 +672,11 @@ function updateCooldownUI(buttonId) {
         if (buttonId === 'generateBtn') {
             const generateText = document.getElementById('generateText');
             const generateLoading = document.getElementById('generateLoading');
-            button.disabled = false;
-            generateText.classList.remove('hidden');
-            generateLoading.classList.add('hidden');
+            if (generateText && generateLoading) {
+                button.disabled = false;
+                generateText.classList.remove('hidden');
+                generateLoading.classList.add('hidden');
+            }
         }
         return;
     }
@@ -670,43 +687,54 @@ function updateCooldownUI(buttonId) {
         const secondsLeft = Math.ceil(timeLeft / 1000);
         button.disabled = true;
         
-        // Store original content (use the normal state, not loading state)
-        if (!button.dataset.originalText) {
-            // Get the normal state from generateText element
-            if (buttonId === 'generateBtn') {
-                const generateText = document.getElementById('generateText');
-                button.dataset.originalText = generateText.innerHTML;
-            } else {
-                button.dataset.originalText = button.innerHTML;
-            }
+        // Store original button HTML structure if not already stored
+        if (!button.dataset.originalHTML) {
+            // Store the complete button HTML with both spans
+            button.dataset.originalHTML = button.innerHTML;
         }
         
-        // Hide loading state and show cooldown
+        // For generateBtn, hide both spans and show cooldown
         if (buttonId === 'generateBtn') {
             const generateText = document.getElementById('generateText');
             const generateLoading = document.getElementById('generateLoading');
-            generateText.classList.add('hidden');
-            generateLoading.classList.add('hidden');
+            if (generateText && generateLoading) {
+                generateText.classList.add('hidden');
+                generateLoading.classList.add('hidden');
+            }
+            // Show cooldown text directly in button
+            button.innerHTML = `<i class="fas fa-clock mr-2"></i>Wait ${secondsLeft}s`;
+        } else {
+            // For other buttons, just update the text
+            if (!button.dataset.originalText) {
+                button.dataset.originalText = button.innerHTML;
+            }
+            button.innerHTML = `<i class="fas fa-clock mr-2"></i>Wait ${secondsLeft}s`;
         }
-        
-        button.innerHTML = `<i class="fas fa-clock mr-2"></i>Wait ${secondsLeft}s`;
         
         setTimeout(() => updateCooldownUI(buttonId), 1000);
     } else {
         // Cooldown ended - restore to normal state
         button.disabled = false;
-        if (button.dataset.originalText) {
-            if (buttonId === 'generateBtn') {
-                // Restore normal state using generateText element
-                const generateText = document.getElementById('generateText');
-                const generateLoading = document.getElementById('generateLoading');
+        
+        if (buttonId === 'generateBtn') {
+            // Restore the original HTML structure (with both spans)
+            if (button.dataset.originalHTML) {
+                button.innerHTML = button.dataset.originalHTML;
+            }
+            // Ensure normal state is visible
+            const generateText = document.getElementById('generateText');
+            const generateLoading = document.getElementById('generateLoading');
+            if (generateText && generateLoading) {
                 generateText.classList.remove('hidden');
                 generateLoading.classList.add('hidden');
-                button.innerHTML = generateText.innerHTML;
-            } else {
+            }
+        } else {
+            // Restore original text for other buttons
+            if (button.dataset.originalText) {
                 button.innerHTML = button.dataset.originalText;
             }
         }
+        
         localStorage.removeItem('aiCooldown_' + buttonId);
     }
 }

@@ -8,6 +8,12 @@
 </div>
 @endif
 
+@if(session('warning'))
+<div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+    <i class="fas fa-exclamation-triangle mr-2"></i>{{ session('warning') }}
+</div>
+@endif
+
 @if(session('error'))
 <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
     <i class="fas fa-exclamation-circle mr-2"></i>{{ session('error') }}
@@ -289,8 +295,14 @@
             <!-- Save Button -->
             <div class="flex justify-end pt-4 border-t">
                 <button type="submit" 
-                        class="px-6 py-2 text-white rounded-md transition-all font-medium" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';">
-                    <i class="fas fa-save mr-2"></i>Save Preferences
+                        id="savePreferencesBtn"
+                        class="px-6 py-2 text-white rounded-md transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="if(!this.disabled) { this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)'; }" onmouseout="if(!this.disabled) { this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none'; }">
+                    <span id="savePreferencesText">
+                        <i class="fas fa-save mr-2"></i>Save Preferences & Fetch Posts
+                    </span>
+                    <span id="savePreferencesLoading" class="hidden">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Fetching posts...
+                    </span>
                 </button>
             </div>
         </form>
@@ -298,7 +310,7 @@
         <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p class="text-sm text-blue-800">
                 <i class="fas fa-info-circle mr-1"></i>
-                <strong>How it works:</strong> Based on your preferences, our system will automatically fetch viral posts matching your industries and topics. Run <code class="px-2 py-1 bg-white rounded">php artisan app:fetch-linkedin-feeds</code> to fetch posts or wait for the daily automatic fetch.
+                <strong>How it works:</strong> When you save your preferences, the system will immediately fetch viral posts matching your criteria. Posts are also automatically fetched twice daily at 12:15 PM and 6:15 PM.
             </p>
         </div>
     </div>
@@ -688,6 +700,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const hasPreferences = {{ isset($preferences->id) ? 'true' : 'false' }};
     if (!hasPreferences) {
         togglePreferences();
+    }
+    
+    // Handle preferences form submission with loading state
+    const preferencesForm = document.querySelector('form[action="{{ route('inspiration.preferences.update') }}"]');
+    if (preferencesForm) {
+        preferencesForm.addEventListener('submit', function(e) {
+            const saveBtn = document.getElementById('savePreferencesBtn');
+            const saveText = document.getElementById('savePreferencesText');
+            const saveLoading = document.getElementById('savePreferencesLoading');
+            
+            if (saveBtn && saveText && saveLoading) {
+                // Show loading state
+                saveBtn.disabled = true;
+                saveText.classList.add('hidden');
+                saveLoading.classList.remove('hidden');
+                
+                // Reset after 60 seconds if something goes wrong (timeout protection)
+                setTimeout(() => {
+                    if (saveBtn.disabled) {
+                        saveBtn.disabled = false;
+                        saveText.classList.remove('hidden');
+                        saveLoading.classList.add('hidden');
+                    }
+                }, 60000);
+            }
+        });
     }
 });
 
