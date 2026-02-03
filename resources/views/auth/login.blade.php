@@ -15,6 +15,7 @@
             </div>
             <div class="text-center">
                 <h1 class="block text-lg font-bold text-gray-900">Welcome</h1>
+                <p class="text-sm text-gray-600">Sign in to your account</p>
             </div>
 
             <div class="mt-5">
