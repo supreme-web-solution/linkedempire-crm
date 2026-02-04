@@ -35,7 +35,7 @@ class LinkedInApiService
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])->get("{$this->restBaseUrl}/posts", $queryParams);
 
@@ -69,7 +69,7 @@ class LinkedInApiService
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])->get("{$this->restBaseUrl}/posts/{$postUrn}");
 
@@ -109,7 +109,7 @@ class LinkedInApiService
             
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
                 'Content-Type' => 'application/json',
             ])->post("{$this->restBaseUrl}/socialActions/{$targetUrn}/comments", [
@@ -162,7 +162,7 @@ class LinkedInApiService
             
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
                 'X-Restli-Method' => 'PARTIAL_UPDATE',
                 'Content-Type' => 'application/json',
@@ -207,7 +207,7 @@ class LinkedInApiService
             
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])->delete("{$this->restBaseUrl}/socialActions/{$targetUrn}/comments/{$commentId}?actor={$actorUrn}");
 
@@ -244,7 +244,7 @@ class LinkedInApiService
             
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])->get("{$this->restBaseUrl}/socialActions/{$targetUrn}/comments");
 
@@ -278,7 +278,7 @@ class LinkedInApiService
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
             ])->get("{$this->baseUrl}/userinfo");
 
             if ($response->successful()) {
@@ -347,7 +347,7 @@ class LinkedInApiService
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->accessToken,
-                'Linkedin-Version' => '202401',
+                'Linkedin-Version' => '202601',
                 'X-Restli-Protocol-Version' => '2.0.0',
             ])->get("{$this->restBaseUrl}/posts", $queryParams);
 

@@ -181,7 +181,7 @@ class LinkedInService
         $headers = [
             'Authorization' => 'Bearer ' . $access_token,
             'Content-Type' => 'application/json',
-            'LinkedIn-Version' => '202401',
+            'LinkedIn-Version' => '202601',
             'X-Restli-Protocol-Version' => '2.0.0'
         ];
 
@@ -267,7 +267,7 @@ class LinkedInService
 
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
-            'LinkedIn-Version' => '202401',
+            'LinkedIn-Version' => '202601',
             'X-Restli-Protocol-Version' => '2.0.0'
         ];
 
@@ -406,7 +406,7 @@ class LinkedInService
         $initResponse = Http::withHeaders([
             'Authorization' => 'Bearer ' . $access_token,
             'Content-Type' => 'application/json',
-            'LinkedIn-Version' => '202501'
+            'LinkedIn-Version' => '202601'
         ])->post('https://api.linkedin.com/rest/images?action=initializeUpload', [
             "initializeUploadRequest" => [
                 "owner" => $author
@@ -451,7 +451,7 @@ class LinkedInService
         $initResponse = Http::withHeaders([
             'Authorization' => 'Bearer ' . $access_token,
             'Content-Type' => 'application/json',
-            'LinkedIn-Version' => '202501'
+            'LinkedIn-Version' => '202601'
         ])->post('https://api.linkedin.com/rest/videos?action=initializeUpload', [
             "initializeUploadRequest" => [
                 "owner" => $author,
@@ -547,7 +547,7 @@ class LinkedInService
         $initResponse = Http::withHeaders([
             'Authorization' => 'Bearer ' . $access_token,
             'Content-Type' => 'application/json',
-            'LinkedIn-Version' => '202501'
+            'LinkedIn-Version' => '202601'
         ])->post('https://api.linkedin.com/rest/documents?action=initializeUpload', [
             "initializeUploadRequest" => [
                 "owner" => $author
