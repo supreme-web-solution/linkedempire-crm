@@ -181,7 +181,7 @@ class LinkedInService
         $headers = [
             'Authorization' => 'Bearer ' . $access_token,
             'Content-Type' => 'application/json',
-            'LinkedIn-Version' => '202501',
+            'LinkedIn-Version' => '202401',
             'X-Restli-Protocol-Version' => '2.0.0'
         ];
 
@@ -267,7 +267,7 @@ class LinkedInService
 
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
-            'LinkedIn-Version' => '202501',
+            'LinkedIn-Version' => '202401',
             'X-Restli-Protocol-Version' => '2.0.0'
         ];
 

@@ -8,11 +8,54 @@ use Illuminate\Support\Str;
 
 class LinkedInContentService
 {
-    protected Cloudinary $cloudinary;
+    protected ?Cloudinary $cloudinary = null;
+    protected bool $isConfigured = false;
 
     public function __construct()
     {
-        $this->cloudinary = new Cloudinary();
+        // Check if Cloudinary is configured before initializing
+        $cloudName = config('cloudinary.cloud.cloud_name') ?: env('CLOUDINARY_CLOUD_NAME');
+        $apiKey = config('cloudinary.cloud.api_key') ?: env('CLOUDINARY_API_KEY');
+        $apiSecret = config('cloudinary.cloud.api_secret') ?: env('CLOUDINARY_API_SECRET');
+        
+        if ($cloudName && $apiKey && $apiSecret) {
+            try {
+                $this->cloudinary = new Cloudinary([
+                    'cloud' => [
+                        'cloud_name' => $cloudName,
+                        'api_key' => $apiKey,
+                        'api_secret' => $apiSecret,
+                    ],
+                    'url' => [
+                        'secure' => true
+                    ]
+                ]);
+                $this->isConfigured = true;
+            } catch (\Exception $e) {
+                \Log::warning('Cloudinary initialization failed', ['error' => $e->getMessage()]);
+                $this->isConfigured = false;
+            }
+        } else {
+            \Log::warning('Cloudinary not configured - missing credentials');
+        }
+    }
+    
+    /**
+     * Check if Cloudinary is properly configured
+     */
+    public function isConfigured(): bool
+    {
+        return $this->isConfigured && $this->cloudinary !== null;
+    }
+    
+    /**
+     * Ensure Cloudinary is configured before operations
+     */
+    protected function ensureConfigured(): void
+    {
+        if (!$this->isConfigured()) {
+            throw new \Exception('Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your environment.');
+        }
     }
 
     /**
@@ -23,6 +66,8 @@ class LinkedInContentService
      */
     public function uploadImage(UploadedFile $file): string
     {
+        $this->ensureConfigured();
+        
         $filename = $this->generateUniqueFilename($file);
         
         // Upload to Cloudinary
@@ -52,6 +97,8 @@ class LinkedInContentService
      */
     public function uploadCarouselImages(array $files): array
     {
+        $this->ensureConfigured();
+        
         $uploadedUrls = [];
         
         foreach ($files as $file) {
@@ -87,6 +134,8 @@ class LinkedInContentService
      */
     public function uploadVideo(UploadedFile $file): string
     {
+        $this->ensureConfigured();
+        
         $filename = $this->generateUniqueFilename($file);
         
         // Upload to Cloudinary
@@ -115,6 +164,8 @@ class LinkedInContentService
      */
     public function uploadDocument(UploadedFile $file): string
     {
+        $this->ensureConfigured();
+        
         $filename = $this->generateUniqueFilename($file);
         
         \Log::info('📄 Uploading carousel document to Cloudinary', [
@@ -159,6 +210,10 @@ class LinkedInContentService
      */
     public function deleteFile(string $publicId, string $resourceType = 'image'): bool
     {
+        if (!$this->isConfigured()) {
+            return false;
+        }
+        
         try {
             $this->cloudinary->uploadApi()->destroy($publicId, [
                 'resource_type' => $resourceType

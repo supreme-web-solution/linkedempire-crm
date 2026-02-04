@@ -84,17 +84,40 @@ class ContentCreatorController extends Controller
         $imageUrls = null;
         $videoUrl = null;
 
-        // Initialize Cloudinary service
-        $cloudinaryService = new LinkedInContentService();
+        // Initialize Cloudinary service only if we need to upload files
+        $needsUpload = ($request->post_type === 'image' && $request->hasFile('images')) ||
+                       ($request->post_type === 'video' && $request->hasFile('video'));
+        
+        if ($needsUpload) {
+            $cloudinaryService = new LinkedInContentService();
+            
+            // Check if Cloudinary is configured before attempting upload
+            if (!$cloudinaryService->isConfigured()) {
+                \Log::error('Invalid configuration, please set up your environment', [
+                    'userId' => auth()->id()
+                ]);
+                return back()->withErrors(['upload' => 'Media upload service is not configured. Please contact support or upload your media directly when publishing.'])->withInput();
+            }
 
-        // Handle multiple images upload (for image post type - 1 or more images)
-        if ($request->post_type === 'image' && $request->hasFile('images')) {
-            $imageUrls = $cloudinaryService->uploadCarouselImages($request->file('images'));
-        }
+            // Handle multiple images upload (for image post type - 1 or more images)
+            if ($request->post_type === 'image' && $request->hasFile('images')) {
+                try {
+                    $imageUrls = $cloudinaryService->uploadCarouselImages($request->file('images'));
+                } catch (\Exception $e) {
+                    \Log::error('Failed to upload images', ['error' => $e->getMessage()]);
+                    return back()->withErrors(['images' => 'Failed to upload images: ' . $e->getMessage()])->withInput();
+                }
+            }
 
-        // Handle video upload (only for video post type)
-        if ($request->post_type === 'video' && $request->hasFile('video')) {
-            $videoUrl = $cloudinaryService->uploadVideo($request->file('video'));
+            // Handle video upload (only for video post type)
+            if ($request->post_type === 'video' && $request->hasFile('video')) {
+                try {
+                    $videoUrl = $cloudinaryService->uploadVideo($request->file('video'));
+                } catch (\Exception $e) {
+                    \Log::error('Failed to upload video', ['error' => $e->getMessage()]);
+                    return back()->withErrors(['video' => 'Failed to upload video: ' . $e->getMessage()])->withInput();
+                }
+            }
         }
 
         // Determine status based on publish option
