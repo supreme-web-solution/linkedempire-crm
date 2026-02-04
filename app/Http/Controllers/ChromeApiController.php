@@ -1597,7 +1597,7 @@ class ChromeApiController extends Controller
             ]);
                 
                 return $this->errorResponse(
-                    'PhantomBuster configuration missing. Please set PHANTOMBUSTER_LINKEDIN_POST_COMMENTS_PHANTOM_ID in your .env file.',
+                    'Data extraction service not configured. Please contact support.',
                     422
                 );
             }
@@ -1844,15 +1844,14 @@ class ChromeApiController extends Controller
                 
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Network timeout: Cannot connect to PhantomBuster API.',
+                    'message' => 'Network timeout: Data extraction service unavailable.',
                     'error_code' => 'NETWORK_TIMEOUT',
                     'error_type' => 'network_timeout',
-                    'help_message' => 'This is usually a network connectivity issue. Please check your internet connection and try again.',
+                    'help_message' => 'This is usually a temporary network issue. Please try again in a moment.',
                     'suggestions' => [
                         '1. Check your internet connection',
-                        '2. Verify your server can access external APIs',
-                        '3. Check if a firewall is blocking connections to api.phantombuster.com',
-                        '4. Try again in a few moments'
+                        '2. Wait a few seconds and try again',
+                        '3. If the problem persists, contact support'
                     ]
                 ], 500);
             }

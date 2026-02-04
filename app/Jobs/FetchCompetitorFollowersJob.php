@@ -53,7 +53,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
         }
 
         // Update status to processing IMMEDIATELY when job starts
-        $this->updateFetchStatus($audience, 'processing', 'Job started - initializing...');
+        $this->updateFetchStatus($audience, 'processing', '🚀 Warming up the engines...');
 
         Log::info('🚀 FetchCompetitorFollowersJob: Job picked up and started processing', [
             'audience_id' => $audience->audience_id,
@@ -67,7 +67,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
         $created = 0;
 
         // Update status: fetching company posts
-        $this->updateFetchStatus($audience, 'processing', 'Fetching company posts...');
+        $this->updateFetchStatus($audience, 'processing', '🔍 Scanning company activity...');
 
         try {
             // Get already-scraped post URLs from audience source_meta to skip them
@@ -86,7 +86,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             ]);
             
             // Update status: fetching engagers
-            $this->updateFetchStatus($audience, 'processing', 'Scraping post engagers from PhantomBuster...');
+            $this->updateFetchStatus($audience, 'processing', '⚡ Extracting active engagers...');
             
             // Fetch company post engagers (people who liked company posts)
             // This doesn't require admin access and works for any company
@@ -129,7 +129,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             }
 
             // Update status: storing followers
-            $this->updateFetchStatus($audience, 'processing', 'Storing followers in database...');
+            $this->updateFetchStatus($audience, 'processing', '💾 Building your audience list...');
             
             foreach ($followers as $index => $follower) {
                 // Skip if not an array (safety check)
@@ -150,15 +150,15 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             // Only mark as completed if we actually stored followers
             if ($created > 0) {
                 // Update status to completed
-                $this->updateFetchStatus($audience, 'completed', 'Completed successfully', [
+                $this->updateFetchStatus($audience, 'completed', '✅ Done! Your audience is ready', [
                     'stored_count' => $created,
                     'total_fetched' => count($followers)
                 ]);
             } else {
                 // No followers were stored - mark as failed with explanation
-                $errorMessage = 'No followers were stored. This may be due to: export limits, network errors, or no engagers found.';
+                $errorMessage = 'No new profiles were added. Try again later or check if the company has recent post activity.';
                 if (count($followers) === 0) {
-                    $errorMessage = 'No engagers were found. This may be due to: PhantomBuster export limits, network connection issues, or the posts had no engagers.';
+                    $errorMessage = 'No active engagers found. The company may have limited recent activity or the posts had no interactions.';
                 }
                 
                 $this->updateFetchStatus($audience, 'failed', $errorMessage);

@@ -196,7 +196,7 @@ class LinkedInCompetitorController extends Controller
         $meta = json_decode($audience->source_meta, true) ?? [];
         $meta['fetch_status'] = 'pending';
         $meta['fetch_started_at'] = now()->toIso8601String();
-        $meta['fetch_progress'] = 'Initializing...';
+        $meta['fetch_progress'] = '⏳ Queued and ready to go...';
         $audience->source_meta = json_encode($meta);
         $audience->save();
 
