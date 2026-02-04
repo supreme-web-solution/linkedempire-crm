@@ -128,54 +128,29 @@ class LinkedInService
     }
 
     /**
-     * 🔥 NEW: Publish post using LinkedIn API v2 (Official /rest/posts endpoint)
-     * This allows posting from backend without user being online!
+     * Publish post using LinkedIn API v2 (Official /rest/posts endpoint)
      */
     public function publishPostV2($linkedInPost, $integration)
     {
-        // LinkedIn's new /rest/posts endpoint doesn't use /v2/ prefix
         $api_url = "https://api.linkedin.com/rest/posts";
         $access_token = $integration->access_token;
         $author = "urn:li:person:" . $integration->oauth_uid;
 
-        Log::info('🔧 Starting publishPostV2', [
-            'post_id' => $linkedInPost->id,
-            'api_url' => $api_url,
-            'author' => $author,
-            'has_access_token' => !empty($access_token),
-            'token_length' => strlen($access_token ?? ''),
-            'integration_id' => $integration->id
-        ]);
-
-        // Check if token needs refresh
+        // Refresh token if expired
         if ($this->isTokenExpired($integration)) {
-            Log::info('🔄 Access token expired, refreshing...', [
-                'integration_id' => $integration->id,
-                'expires_in' => $integration->expires_in,
-                'updated_at' => $integration->updated_at
-            ]);
-            
             try {
                 $newTokens = $this->refreshAccessToken($integration->refresh_token);
-                
                 $integration->update([
                     'access_token' => $newTokens['access_token'],
                     'refresh_token' => $newTokens['refresh_token'] ?? $integration->refresh_token,
                     'expires_in' => $newTokens['expires_in'],
                     'updated_at' => now()
                 ]);
-                
                 $access_token = $newTokens['access_token'];
-                Log::info('✅ Token refreshed successfully');
             } catch (\Exception $e) {
-                Log::error('❌ Token refresh failed', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
+                Log::error('Token refresh failed', ['error' => $e->getMessage()]);
                 throw $e;
             }
-        } else {
-            Log::info('✅ Access token is still valid');
         }
 
         $headers = [
@@ -185,72 +160,25 @@ class LinkedInService
             'X-Restli-Protocol-Version' => '2.0.0'
         ];
 
-        Log::info('🔨 Building post body', [
-            'post_type' => $linkedInPost->post_type,
-            'has_image' => !empty($linkedInPost->image_url),
-            'has_video' => !empty($linkedInPost->video_url),
-            'has_carousel' => false
-        ]);
-
-        // Build post body based on type
         $post_body = $this->buildPostBodyV2($linkedInPost, $author, $access_token);
-
-        Log::info('📤 Publishing post via LinkedIn API v2', [
-            'post_id' => $linkedInPost->id,
-            'post_type' => $linkedInPost->post_type,
-            'author' => $author,
-            'api_url' => $api_url,
-            'post_body_keys' => array_keys($post_body),
-            'post_body_full' => $post_body,
-            'content_preview' => substr($linkedInPost->content, 0, 100),
-            'integration_owner' => $integration->first_name . ' ' . $integration->last_name,
-            'integration_email' => $integration->email
-        ]);
 
         try {
             $httpResponse = Http::withHeaders($headers)->post($api_url, $post_body);
-            
-            Log::info('📥 LinkedIn API HTTP Response', [
-                'status_code' => $httpResponse->status(),
-                'headers' => $httpResponse->headers(),
-                'body' => $httpResponse->body()
-            ]);
-
-            // Check for errors
             $httpResponse->throw();
 
-            // LinkedIn returns post ID in headers, not body
-            $responseHeaders = $httpResponse->headers();
-            $postId = null;
-            
             // Extract post ID from x-restli-id header
-            if (isset($responseHeaders['x-restli-id'][0])) {
-                $postId = $responseHeaders['x-restli-id'][0];
-                Log::info('✅ Post ID extracted from x-restli-id header', ['post_id' => $postId]);
-            }
+            $responseHeaders = $httpResponse->headers();
+            $postId = $responseHeaders['x-restli-id'][0] ?? null;
             
-            // Try to parse JSON body (might be empty for successful posts)
-            $responseBody = null;
-            if (!empty($httpResponse->body())) {
-                $responseBody = $httpResponse->json();
-            }
+            $responseBody = !empty($httpResponse->body()) ? $httpResponse->json() : null;
 
-            // Return both the post ID and any response data
-            $response = [
+            return [
                 'id' => $postId,
                 'status' => $httpResponse->status(),
                 'data' => $responseBody
             ];
-
-            Log::info('✅ LinkedIn API response parsed', ['response' => $response]);
-
-            return $response;
         } catch (\Exception $e) {
-            Log::error('❌ LinkedIn API call failed', [
-                'error' => $e->getMessage(),
-                'status_code' => $e->getCode(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error('LinkedIn API failed', ['post_id' => $linkedInPost->id, 'error' => $e->getMessage()]);
             throw $e;
         }
     }

@@ -133,22 +133,7 @@ class ContentCreatorController extends Controller
             // If user has a timezone setting, we should convert it
             $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
             
-            \Log::info('📅 Scheduling post', [
-                'input_time' => $request->scheduled_at,
-                'parsed_utc' => $scheduledAt->toDateTimeString(),
-                'server_time' => Carbon::now()->toDateTimeString()
-            ]);
         }
-
-        \Log::info('📝 Creating new LinkedIn post', [
-            'user_id' => auth()->id(),
-            'post_type' => $request->post_type,
-            'status' => $status,
-            'scheduled_at' => $scheduledAt,
-            'has_images' => !empty($imageUrls),
-            'has_video' => !empty($videoUrl),
-            'content_length' => strlen($request->content)
-        ]);
 
         // Truncate hashtags if too long (safety measure, but column should now be TEXT)
         $hashtags = $request->hashtags;
@@ -172,35 +157,10 @@ class ContentCreatorController extends Controller
             'word_count' => str_word_count($request->content)
         ]);
 
-        \Log::info('✅ Post created in database', [
-            'post_id' => $post->id,
-            'status' => $post->status,
-            'scheduled_at' => $post->scheduled_at
-        ]);
-
         if ($status === 'scheduled') {
-            \Log::info('📅 Dispatching scheduled job', [
-                'post_id' => $post->id,
-                'delay_until' => $scheduledAt,
-                'queue_driver' => config('queue.default')
-            ]);
-            // Dispatch job for scheduling
             \App\Jobs\PublishLinkedInPost::dispatch($post)->delay($scheduledAt);
         } elseif ($status === 'ready_to_publish') {
-            \Log::info('🚀 Dispatching IMMEDIATE publish job', [
-                'post_id' => $post->id,
-                'user_id' => auth()->id(),
-                'linkedin_id' => auth()->user()->linkedin_id ?? 'not_set',
-                'queue_driver' => config('queue.default'),
-                'queue_connection' => config('queue.connections.database')
-            ]);
-            
-            // For immediate publishing, use dispatchSync to run immediately
-            // This ensures the job runs right away without needing queue worker
-            \Log::info('⚡ Using dispatchSync for immediate execution');
             \App\Jobs\PublishLinkedInPost::dispatchSync($post);
-            
-            \Log::info('✅ Job completed for post_id: ' . $post->id);
         }
 
         notify()->success('Post saved successfully!');
@@ -437,13 +397,6 @@ class ContentCreatorController extends Controller
 
         // Parse the datetime and assume it's in UTC (since datetime-local doesn't include timezone)
         $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
-        
-        \Log::info('📅 Rescheduling post', [
-            'post_id' => $id,
-            'input_time' => $request->scheduled_at,
-            'parsed_utc' => $scheduledAt->toDateTimeString(),
-            'server_time' => Carbon::now()->toDateTimeString()
-        ]);
 
         $post->update([
             'status' => 'scheduled',
@@ -478,15 +431,6 @@ class ContentCreatorController extends Controller
             'scheduled_at' => now()
         ]);
 
-        // Log that a post is being published immediately
-        \Log::info('🚀 Publishing draft post immediately', [
-            'post_id' => $post->id,
-            'user_id' => auth()->id(),
-            'linkedin_id' => auth()->user()->linkedin_id,
-            'content_preview' => substr($post->content, 0, 100) . '...'
-        ]);
-
-        // Dispatch job SYNCHRONOUSLY (no queue worker needed)
         \App\Jobs\PublishLinkedInPost::dispatchSync($post);
 
         return response()->json([
@@ -592,13 +536,6 @@ class ContentCreatorController extends Controller
             ->orWhere('status', 'ready_to_publish')
             ->orderBy('scheduled_at', 'asc')
             ->get();
-
-        \Log::info('🔍 Extension requested scheduled posts', [
-            'user_id' => $user->id,
-            'linkedin_id' => $lkId,
-            'posts_found' => $posts->count(),
-            'posts' => $posts->pluck('id', 'content')
-        ]);
 
         return response()->json([
             'data' => $posts,

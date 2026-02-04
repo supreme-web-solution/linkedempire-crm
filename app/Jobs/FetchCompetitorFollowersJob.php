@@ -23,12 +23,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
      */
     public int $timeout = 900;
 
-    /**
-     * The name of the queue the job should be sent to.
-     * Using 'default' queue which is handled by supervisor-1 in Horizon.
-     */
-    public string $queue = 'default';
-
     public int $userId;
     public int $audiencePkId;
     public string $companyUrl;
@@ -44,6 +38,9 @@ class FetchCompetitorFollowersJob implements ShouldQueue
         $this->companyUrl = $companyUrl;
         $this->sessionCookie = $sessionCookie;
         $this->userAgent = $userAgent;
+        
+        // Set the queue (using method from Queueable trait instead of property)
+        $this->onQueue('default');
     }
 
     public function handle(): void
