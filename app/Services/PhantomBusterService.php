@@ -2401,8 +2401,8 @@ class PhantomBusterService
         // PhantomBuster API only allows 1 parallel execution per agent
         // Lock must be held for the ENTIRE operation (launch + polling), not just the API call
         $lockKey = "phantombuster:agent:{$phantomId}:launch_lock";
-        $lockTimeout = 300; // 5 minutes - maximum time to wait for lock
-        $lockDuration = 600; // 10 minutes - how long to hold the lock if not manually released (safety net)
+        $lockTimeout = 600; // 10 minutes - maximum time to wait for lock (increased to match job timeout)
+        $lockDuration = 900; // 15 minutes - how long to hold the lock if not manually released (safety net, increased to prevent stuck locks)
         
         $lock = Cache::lock($lockKey, $lockDuration);
         

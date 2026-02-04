@@ -37,10 +37,10 @@ class FetchAudienceEmailJob implements ShouldQueue
     public $backoff = null;
 
     /**
-     * The number of seconds the job can run before timing out (8 minutes)
-     * This is slightly longer than PhantomBuster's maxWaitSeconds (5 minutes)
+     * The number of seconds the job can run before timing out (10 minutes)
+     * This matches the lock timeout and allows enough time for PhantomBuster operations
      */
-    public $timeout = 480;
+    public $timeout = 600;
 
     /**
      * Delete the job if it fails (don't keep failed jobs in queue)
