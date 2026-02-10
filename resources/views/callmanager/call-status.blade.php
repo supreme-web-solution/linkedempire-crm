@@ -25,6 +25,18 @@
         </div>
     </div>
     
+    <div class="flex items-center justify-between mb-2">
+        <div class="text-xs text-gray-500">
+            Call Status entries are separate from Call Campaigns.
+        </div>
+        <form method="post" action="{{ route('calls.clear') }}" onsubmit="return confirm('Clear all call status entries? This cannot be undone.');">
+            @csrf
+            @method('delete')
+            <button type="submit" class="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-hidden focus:ring-2 focus:ring-red-500">
+                Clear Call Status
+            </button>
+        </form>
+    </div>
     <div class="w-full overflow-hidden rounded-lg">
         <div class="w-full overflow-x-auto">
             <div class="grid grid-cols-12 p-3 mb-3 bg-white border border-gray-200 rounded-lg shadow-sm font-semibold px-3 text-sm">

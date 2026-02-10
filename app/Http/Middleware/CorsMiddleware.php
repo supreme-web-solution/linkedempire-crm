@@ -17,10 +17,20 @@ class CorsMiddleware
      */
     public function handle(Request $request, Closure $next)
     {
+        $origin = $request->headers->get('Origin');
+        $allowedOrigins = [
+            'https://www.linkedin.com',
+            'https://app.linkedempire.com',
+        ];
+        $isChromeExtension = $origin && str_starts_with($origin, 'chrome-extension://');
+        $allowOrigin = $isChromeExtension || in_array($origin, $allowedOrigins, true)
+            ? $origin
+            : 'https://www.linkedin.com';
+
         // Handle preflight requests
         if ($request->isMethod('OPTIONS')) {
             return response('', 200)
-                ->header('Access-Control-Allow-Origin', 'https://www.linkedin.com')
+                ->header('Access-Control-Allow-Origin', $allowOrigin)
                 ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
                 ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Requested-With, csrf-token, Accept')
                 ->header('Access-Control-Max-Age', '86400'); // 24 hours
@@ -39,7 +49,7 @@ class CorsMiddleware
 
         // Add CORS headers to all responses (including errors)
         return $response
-            ->header('Access-Control-Allow-Origin', 'https://www.linkedin.com')
+            ->header('Access-Control-Allow-Origin', $allowOrigin)
             ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
             ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Requested-With, csrf-token, Accept')
             ->header('Access-Control-Allow-Credentials', 'false');

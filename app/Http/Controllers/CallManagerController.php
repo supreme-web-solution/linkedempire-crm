@@ -162,6 +162,24 @@ class CallManagerController extends Controller
         return redirect()->route('calls');
     }
 
+    /**
+     * Clear all call status rows for the current user.
+     */
+    public function clearCallStatus()
+    {
+        $userId = Auth::id();
+
+        $callIds = CallStatus::where('user_id', $userId)->pluck('id');
+        if ($callIds->isNotEmpty()) {
+            CallReminderMessage::whereIn('call_reminder_id', $callIds)->delete();
+        }
+
+        CallStatus::where('user_id', $userId)->delete();
+
+        notify()->success('Call status list cleared');
+        return redirect()->route('calls');
+    }
+
     public function updateCallReminder(Request $request)
     {
         // Update reminder settings for a specific call

@@ -181,6 +181,7 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/calls/reminders', 'callReminder')->name('calls.reminders');
         Route::get('/calls/{id}', 'showCallDetails')->name('calls.show');
         Route::put('/calls/status/update', 'update')->name('calls.update');
+        Route::delete('/calls/status/clear', 'clearCallStatus')->name('calls.clear');
         Route::put('/calls/pending-message/update', 'updatePendingMessageWeb')->name('calls.update-pending-message');
         Route::get('/call/reminder-messages/{id}', 'show')->name('calls.show.reminder-message');
         Route::put('/call/reminder/update', 'updateCallReminder')->name('calls.update.reminder-message');
