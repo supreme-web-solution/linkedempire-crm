@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\CallStatus;
 use App\Models\CallReminder;
 use App\Models\CallReminderMessage;
+use App\Models\CallCampaign;
+use App\Models\Audience;
 use App\Models\User;
 use App\Helpers\CampaignHelper;
 use App\Services\ChatGPT;
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Http;
+use App\Services\CalendarLinkService;
 
 class CallManagerController extends Controller
 {
@@ -26,8 +28,19 @@ class CallManagerController extends Controller
     public function index()
     {
         $callStatus = CallStatus::where('user_id', Auth::id())->paginate(15);
+        $callCampaigns = CallCampaign::where('user_id', Auth::id())
+            ->with('audience')
+            ->withCount('leads')
+            ->withCount(['messages as messages_sent_count' => function ($query) {
+                $query->where('call_campaign_lead_messages.status', 'sent');
+            }])
+            ->latest()
+            ->get();
+        $audiences = Audience::where('user_id', Auth::id())
+            ->orderBy('audience_name')
+            ->get();
 
-        return view('callmanager.index', compact('callStatus'));
+        return view('callmanager.index', compact('callStatus', 'callCampaigns', 'audiences'));
     }
 
     /**
@@ -1064,104 +1077,7 @@ EOD;
      */
     private function generateCalendarLink($call, $user = null)
     {
-        // Check if Calendly is enabled and user has connected their account
-        if (config('services.calendly.enabled')) {
-            // Use provided user, or try to get user from Auth, then from call record
-            if (!$user) {
-                $user = Auth::user();
-                if (!$user && $call->user_id) {
-                    $user = User::find($call->user_id);
-                }
-            }
-            
-            Log::info('Generating calendar link:', [
-                'call_id' => $call->id,
-                'call_user_id' => $call->user_id,
-                'auth_user_id' => Auth::user() ? Auth::user()->id : 'not authenticated',
-                'resolved_user_id' => $user ? $user->id : 'not found',
-                'has_access_token' => $user && $user->calendly_access_token ? 'yes' : 'no',
-                'calendly_access_token_length' => $user && $user->calendly_access_token ? strlen($user->calendly_access_token) : 0,
-                'calendly_organization_uri' => $user ? $user->calendly_organization_uri : 'none'
-            ]);
-            
-            // Use the connected user's Calendly scheduling URL
-            if ($user && $user->calendly_access_token) {
-                Log::info('Attempting to fetch user Calendly info from API');
-                try {
-                    // Check if token is expired and refresh if needed
-                    if ($user->calendly_token_expires && now()->isAfter($user->calendly_token_expires)) {
-                        Log::info('Calendly token expired, attempting refresh');
-                        $this->refreshCalendlyToken($user);
-                    }
-                    
-                    // Get user's Calendly info to get their scheduling URL
-                    $response = Http::withToken($user->calendly_access_token)
-                        ->get('https://api.calendly.com/users/me');
-                    
-                    Log::info('Calendly API response status:', ['status' => $response->status()]);
-                    
-                    if ($response->successful()) {
-                        $data = $response->json();
-                        $calendlyLink = $data['resource']['scheduling_url'] ?? null;
-                        
-                        Log::info('Calendly API response:', [
-                            'scheduling_url' => $calendlyLink,
-                            'user_name' => $data['resource']['name'] ?? 'unknown',
-                            'full_response' => $data
-                        ]);
-                        
-                        if ($calendlyLink) {
-                            $recipientName = urlencode($call->recipient);
-                            $company = urlencode($call->company ?? '');
-                            $email = urlencode($call->recipient); // Use recipient as email placeholder
-                            
-                            // Add call_id as custom parameter to help with webhook matching
-                            $callId = urlencode($call->id);
-                            
-                            // Use UTM parameters to pass call ID (these are included in webhook payload)
-                            $finalLink = "{$calendlyLink}?name={$recipientName}&email={$email}&a1={$company}&a2={$callId}&utm_campaign=call_booking&utm_source=linkdominator&utm_medium=api&utm_content={$callId}";
-                            
-                            Log::info('Generated Calendly link from API:', ['link' => $finalLink]);
-                            
-                            return $finalLink;
-                        }
-                    } else {
-                        Log::warning('Calendly API call failed:', [
-                            'status' => $response->status(),
-                            'body' => $response->body()
-                        ]);
-                    }
-                } catch (\Throwable $th) {
-                    Log::warning('Failed to get user Calendly scheduling URL:', [
-                        'user_id' => $user->id,
-                        'error' => $th->getMessage(),
-                        'trace' => $th->getTraceAsString()
-                    ]);
-                }
-            }
-            
-            // Fallback to config link if user hasn't connected or API call failed
-            $calendlyLink = config('services.calendly.link');
-            Log::info('Using fallback config link:', ['link' => $calendlyLink]);
-            
-            if ($calendlyLink && strpos($calendlyLink, 'calendly.com') !== false) {
-                $recipientName = urlencode($call->recipient);
-                $company = urlencode($call->company ?? '');
-                $email = urlencode($call->recipient);
-                $callId = urlencode($call->id);
-                
-                // Use UTM parameters to pass call ID (these are included in webhook payload)
-                $finalLink = "{$calendlyLink}?name={$recipientName}&email={$email}&a1={$company}&a2={$callId}&utm_campaign=call_booking&utm_source=linkdominator&utm_medium=api&utm_content={$callId}";
-                
-                Log::info('Generated fallback Calendly link:', ['link' => $finalLink]);
-                
-                return $finalLink;
-            }
-        }
-        
-        // Fallback to internal scheduling page
-        $baseUrl = rtrim(config('app.url'), '/');
-        return "{$baseUrl}/schedule-call/{$call->id}";
+        return app(CalendarLinkService::class)->generateForCall($call, $user);
     }
 
     /**
@@ -1993,14 +1909,7 @@ IMPORTANT: Use this exact link: {$calendarLink}";
      */
     private function generateSimpleCalendarLink()
     {
-        // Check if Calendly is enabled and configured
-        if (config('services.calendly.enabled') && config('services.calendly.link')) {
-            return config('services.calendly.link');
-        }
-        
-        // Fallback to internal scheduling page
-        $baseUrl = config('app.url');
-        return "{$baseUrl}/schedule-call";
+        return app(CalendarLinkService::class)->generateSimple();
     }
 
     /**
@@ -2089,51 +1998,6 @@ IMPORTANT: Use this exact link: {$calendarLink}";
         }
     }
 
-    /**
-     * Refresh Calendly access token using refresh token
-     */
-    private function refreshCalendlyToken($user)
-    {
-        try {
-            if (!$user->calendly_refresh_token) {
-                Log::warning('No refresh token available for user', ['user_id' => $user->id]);
-                return false;
-            }
-
-            $response = Http::asForm()->post('https://auth.calendly.com/oauth/token', [
-                'grant_type'    => 'refresh_token',
-                'client_id'     => config('services.calendly.client_id'),
-                'client_secret' => config('services.calendly.client_secret'),
-                'refresh_token' => $user->calendly_refresh_token,
-            ]);
-
-            if ($response->successful()) {
-                $data = $response->json();
-                
-                $user->update([
-                    'calendly_access_token'  => $data['access_token'],
-                    'calendly_refresh_token' => $data['refresh_token'] ?? $user->calendly_refresh_token,
-                    'calendly_token_expires' => now()->addSeconds($data['expires_in']),
-                ]);
-
-                Log::info('Calendly token refreshed successfully', ['user_id' => $user->id]);
-                return true;
-            } else {
-                Log::warning('Failed to refresh Calendly token', [
-                    'user_id' => $user->id,
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                return false;
-            }
-        } catch (\Throwable $th) {
-            Log::error('Error refreshing Calendly token', [
-                'user_id' => $user->id,
-                'error' => $th->getMessage()
-            ]);
-            return false;
-        }
-    }
 
     /**
      * Determine if response is positive based on AI analysis

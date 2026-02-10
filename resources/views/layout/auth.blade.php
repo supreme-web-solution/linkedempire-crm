@@ -597,7 +597,7 @@
                     </a>
                 </li>
                 @endif
-                @if(auth()->user()->can('OTO6') || auth()->user()->can('OTO8') || auth()->user()->can('Bundle'))
+                {{-- @if(auth()->user()->can('OTO6') || auth()->user()->can('OTO8') || auth()->user()->can('Bundle'))
                 <li>
                     <a href="{{route('dfy-software-empire-setup')}}" data-tooltip="DFY Software Empire" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['dfy-software-empire-setup']) ? 'bg-gray-100':'' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
@@ -607,7 +607,7 @@
                         <span class="sidebar-text">DFY Software Empire</span>
                     </a>
                 </li>
-                @endif
+                @endif --}}
                 @if(auth()->user()->can('OTO7') || auth()->user()->can('OTO8') || auth()->user()->can('Bundle'))
                 <li>
                     <a href="{{route('coach-program')}}" data-tooltip="Coaching Program" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['coach-program']) ? 'bg-gray-100':'' }}">

@@ -15,6 +15,7 @@
     <div class="mt-3">
         <div id="tabs-with-underline-1" role="tabpanel" aria-labelledby="tabs-with-underline-item-1">
             @include('callmanager.call-status')
+            @include('callmanager.call-campaigns')
         </div>
     </div>
 </div>

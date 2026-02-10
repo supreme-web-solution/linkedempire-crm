@@ -186,6 +186,12 @@ Route::middleware(['auth'])->group(function(){
         Route::put('/call/reminder/update', 'updateCallReminder')->name('calls.update.reminder-message');
     });
 
+    Route::controller(App\Http\Controllers\CallCampaignController::class)->group(function (){
+        Route::post('/calls/campaigns', 'store')->name('calls.campaigns.store');
+        Route::post('/calls/campaigns/{id}/status', 'updateStatus')->name('calls.campaigns.status');
+        Route::delete('/calls/campaigns/{id}', 'destroy')->name('calls.campaigns.delete');
+    });
+
     Route::controller(LeadController::class)->group(function (){
         Route::get('/leadlist', 'index')->name('leads.list');
         Route::get('/leadlist/search', 'search_leadlist')->name('leads.list.search');

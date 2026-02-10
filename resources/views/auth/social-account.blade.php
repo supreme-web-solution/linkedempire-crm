@@ -29,7 +29,7 @@
 <div class="mt-6 space-y-4">
     <div class="rounded-lg border border-[#0077b5] bg-blue-50 p-4 text-sm text-[#005885]">
         <p class="font-medium">Why we need your <code class="font-mono bg-white/60 px-1 py-0.5 rounded">li_at</code> cookie</p>
-        <p class="mt-1">LinkedIn allows automations (post likers, group members, audience creation) only when they run with your own browser session. Paste your session cookie and user agent below once, and we'll reuse it for every Phantom job. LinkedIn rotates the cookie every few weeks, so refresh it whenever runs start failing.</p>
+        <p class="mt-1">LinkedIn allows automations (post likers, group members, audience creation) only when they run with your own browser session. Paste your session cookie and user agent below once, and we'll reuse it for every LinkedEmpire job. LinkedIn rotates the cookie every few weeks, so refresh it whenever runs start failing.</p>
         <a href="https://linkdominator.com/help/linkedin-session-cookie" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-sm font-semibold text-[#0077b5] hover:text-[#005885] mt-2">
             How to copy the cookie & user agent
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M12.293 2.293a1 1 0 011.414 0L18 6.586v.001a1 1 0 01-.293.707l-9 9a1 1 0 01-.63.287l-4 .363a1 1 0 01-1.086-1.087l.363-4a1 1 0 01.287-.63l9-9zM5.414 15L5.2 17.2l2.2-.214L15 9.586 13.414 8 5.414 16z"></path></svg>
