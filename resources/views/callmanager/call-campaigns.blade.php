@@ -33,7 +33,6 @@
                 <div>
                     <label for="call-campaign-message-two" class="block mb-2 text-sm font-medium text-gray-900">Message 2 (Calendar link)</label>
                     <textarea id="call-campaign-message-two" name="message_two" rows="5" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" placeholder="Here is my calendar link: {calendarLink}" required></textarea>
-                    <p class="mt-2 text-xs text-gray-500">We automatically add {calendarLink} if you don’t include it.</p>
                 </div>
                 <div>
                     <label for="call-campaign-message-three" class="block mb-2 text-sm font-medium text-gray-900">Message 3 (Follow-up)</label>
@@ -53,7 +52,7 @@
             </div>
 
             <div class="mt-4">
-                <button type="submit" class="py-2 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 focus:outline-hidden focus:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none">
+                <button type="submit" class="py-2 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-green-600 text-white hover:bg-green-700 focus:outline-hidden focus:bg-green-700 disabled:opacity-50 disabled:pointer-events-none">
                     Create Call Campaign
                 </button>
             </div>

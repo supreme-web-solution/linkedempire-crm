@@ -1,30 +1,4 @@
 <div class="mt-3">
-    <!-- Calendly Connection Status -->
-    <div class="mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                    <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
-                    </svg>
-                </div>
-                <div>
-                    <h3 class="text-sm font-medium text-gray-900">Calendly Integration</h3>
-                    <p class="text-xs text-gray-500">Connect your Calendly account to track scheduled calls</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <span id="calendly-status" class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                    Checking...
-                </span>
-                <a href="{{ route('calendly.connect') }}" 
-                   class="px-3 py-1 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
-                    Connect Calendly
-                </a>
-            </div>
-        </div>
-    </div>
-    
     <div class="flex items-center justify-between mb-2">
         <div class="text-xs text-gray-500">
             Call Status entries are separate from Call Campaigns.
@@ -44,8 +18,7 @@
                 <div class="col-span-2">Profile</div>
                 <div class="col-span-2">Sequence</div>
                 <div class="col-span-2">Call Status</div>
-                <div class="col-span-2">Scheduled Time</div>
-                <div class="col-span-1">Reminders</div>
+                <div class="col-span-3">Scheduled Time</div>
                 <div class="col-span-1"></div>
             </div>
             <div>
@@ -55,34 +28,11 @@
                     <div class="col-span-2">{{$item->profile}}</div>
                     <div class="col-span-2">{{$item->sequence}}</div>
                     <div class="col-span-2 capitalize">{{str_replace('_',' ',$item->call_status)}}</div>
-                    <div class="col-span-2">
+                    <div class="col-span-3">
                         @if($item->scheduled_time)
                             {{ \Carbon\Carbon::parse($item->scheduled_time)->format('M j, Y g:i A') }}
                         @else
                             <span class="text-gray-400">Not scheduled</span>
-                        @endif
-                    </div>
-                    <div class="col-span-1">
-                        @if($item->call_status === 'scheduled' && $item->scheduled_time)
-                            <div class="flex flex-col gap-1 text-xs">
-                                @if($item->reminder_16_24_sent)
-                                    <span class="text-green-600">✓ 24h</span>
-                                @else
-                                    <span class="text-gray-400">⏳ 24h</span>
-                                @endif
-                                @if($item->reminder_2_hours_sent)
-                                    <span class="text-green-600">✓ 2h</span>
-                                @else
-                                    <span class="text-gray-400">⏳ 2h</span>
-                                @endif
-                                @if($item->reminder_10_40_min_sent)
-                                    <span class="text-green-600">✓ 30m</span>
-                                @else
-                                    <span class="text-gray-400">⏳ 30m</span>
-                                @endif
-                            </div>
-                        @else
-                            <span class="text-gray-400">N/A</span>
                         @endif
                     </div>
                     <div class="col-span-1">
@@ -256,39 +206,4 @@ $('.edit-pending-message-modal').click(function(){
     }
 })
 
-// Check Calendly connection status
-$(document).ready(function() {
-    $.get('{{ route("calendly.status") }}')
-        .done(function(data) {
-            const statusElement = $('#calendly-status');
-            const connectButton = $('a[href="{{ route("calendly.connect") }}"]');
-            
-            if (data.connected) {
-                statusElement.removeClass('bg-gray-100 text-gray-600')
-                          .addClass('bg-green-100 text-green-600')
-                          .text('Connected');
-                connectButton.text('Disconnect')
-                           .removeClass('bg-green-600 hover:bg-green-700')
-                           .addClass('bg-red-600 hover:bg-red-700')
-                           .attr('href', '#')
-                           .on('click', function(e) {
-                               e.preventDefault();
-                               if (confirm('Are you sure you want to disconnect your Calendly account?')) {
-                                   $.post('{{ route("calendly.disconnect") }}', {
-                                       _token: '{{ csrf_token() }}'
-                                   }).done(function() {
-                                       location.reload();
-                                   });
-                               }
-                           });
-            } else {
-                statusElement.removeClass('bg-gray-100 text-gray-600')
-                          .addClass('bg-yellow-100 text-yellow-600')
-                          .text('Not Connected');
-            }
-        })
-        .fail(function() {
-            $('#calendly-status').text('Error').addClass('bg-red-100 text-red-600');
-        });
-});
 </script>

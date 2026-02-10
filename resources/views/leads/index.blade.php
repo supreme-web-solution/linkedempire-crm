@@ -33,7 +33,7 @@
 </div>
 
 <!-- Stat Cards -->
-<div class="grid gap-6 md:grid-cols-4 mb-6">
+<div class="grid gap-6 md:grid-cols-3 mb-6">
     <!-- Total Lists Card -->
     <div class="relative flex flex-col bg-white border border-gray-200 shadow-md rounded-xl hover:shadow-lg transition-shadow overflow-hidden">
         <div class="absolute top-0 left-0 right-0 h-1" style="background: linear-gradient(135deg, rgb(0, 119, 181) 0%, rgb(0, 88, 133) 100%);"></div>
@@ -80,26 +80,7 @@
         </div>
     </div>
 
-    <!-- Sales Navigator Lists Card -->
-    <div class="relative flex flex-col bg-white border border-gray-200 shadow-md rounded-xl hover:shadow-lg transition-shadow overflow-hidden">
-        <div class="absolute top-0 left-0 right-0 h-1 bg-green-500"></div>
-        <div class="p-5 flex-1 flex flex-col justify-between relative">
-            <div class="flex items-start justify-between mb-4">
-                <div>
-                    <p class="text-sm text-gray-500 mb-1">Sales Navigator</p>
-                    <h3 class="text-3xl font-bold text-gray-800">{{ $stats['sn_lists'] }}</h3>
-                </div>
-                <div class="w-12 h-12 rounded-full flex items-center justify-center bg-green-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-green-600">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-                    </svg>
-                </div>
-            </div>
-            <div class="flex items-center text-xs text-gray-500">
-                <span class="text-green-600 font-medium">Navigator lists</span>
-            </div>
-        </div>
-    </div>
+    
 
     <!-- Total Leads Card -->
     <div class="relative flex flex-col bg-white border border-gray-200 shadow-md rounded-xl hover:shadow-lg transition-shadow overflow-hidden">

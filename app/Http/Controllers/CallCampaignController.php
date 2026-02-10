@@ -33,15 +33,13 @@ class CallCampaignController extends Controller
             ->where('audience_id', $data['audience_id'])
             ->firstOrFail();
 
-        $messageTwo = $this->ensureCalendarLinkPlaceholder($data['message_two']);
-
         $campaign = CallCampaign::create([
             'user_id' => Auth::id(),
             'audience_id' => $audience->audience_id,
             'name' => $data['name'],
             'status' => 'active',
             'message_one' => $data['message_one'],
-            'message_two' => $messageTwo,
+            'message_two' => $data['message_two'],
             'message_three' => $data['message_three'],
             'delay_two_minutes' => $data['delay_two_minutes'],
             'delay_three_minutes' => $data['delay_three_minutes'],
@@ -295,51 +293,7 @@ class CallCampaignController extends Controller
     {
         $template = $message->message_template ?? '';
 
-        if ($message->step === 2) {
-            $calendarLink = $this->resolveCalendarLink($message->lead, $user);
-            $template = $this->insertCalendarLink($template, $calendarLink);
-        }
-
         return $template;
-    }
-
-    private function resolveCalendarLink(CallCampaignLead $lead, $user): string
-    {
-        if ($lead->callStatus && $lead->callStatus->calendar_link) {
-            return $lead->callStatus->calendar_link;
-        }
-
-        if ($lead->callStatus) {
-            $calendarLink = app(CalendarLinkService::class)->generateForCall($lead->callStatus, $user);
-            $lead->callStatus->update(['calendar_link' => $calendarLink]);
-
-            return $calendarLink;
-        }
-
-        return app(CalendarLinkService::class)->generateSimple();
-    }
-
-    private function insertCalendarLink(string $message, string $calendarLink): string
-    {
-        $placeholders = ['{calendarLink}', '{calendar_link}', '{{calendar_link}}'];
-        $replaced = str_replace($placeholders, $calendarLink, $message);
-
-        if ($replaced === $message) {
-            $replaced = rtrim($message) . "\n\n" . $calendarLink;
-        }
-
-        return $replaced;
-    }
-
-    private function ensureCalendarLinkPlaceholder(string $message): string
-    {
-        if (str_contains($message, '{calendarLink}') ||
-            str_contains($message, '{calendar_link}') ||
-            str_contains($message, '{{calendar_link}}')) {
-            return $message;
-        }
-
-        return rtrim($message) . "\n\n{calendarLink}";
     }
 
     private function updateCallStatusHistory(?CallStatus $callStatus, CallCampaignLeadMessage $message, ?string $sentMessage): void
