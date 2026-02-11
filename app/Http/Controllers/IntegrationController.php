@@ -69,9 +69,10 @@ class IntegrationController extends Controller
 
         // Get profile info
         try {
-            $profile = $linkedin->getUserProfile($access_token['access_token']);
+            $profile = $linkedin->getUserProfile($access_token['access_token'], true);
             Log::info('✅ Profile received', [
                 'profile_id' => $profile['id'] ?? 'unknown',
+                'vanity_name' => $profile['vanityName'] ?? 'unknown',
                 'first_name' => $profile['localizedFirstName'] ?? 'unknown',
                 'last_name' => $profile['localizedLastName'] ?? 'unknown'
             ]);
@@ -131,10 +132,19 @@ class IntegrationController extends Controller
                 'user_id' => auth()->user()->id
             ]);
 
+            $linkedinPublicId = $profile['vanityName']
+                ?? $openIdProfile['preferred_username']
+                ?? null;
+
+            if ($linkedinPublicId) {
+                auth()->user()->update(['linkedin_id' => $linkedinPublicId]);
+            }
+
             Log::info('✅✅✅ LinkedIn Integration Created Successfully ✅✅✅', [
                 'integration_id' => $integration->id,
                 'user_id' => auth()->id(),
                 'oauth_uid' => $profile['id'],
+                'linkedin_id_synced' => $linkedinPublicId ?? null,
                 'has_access_token' => !empty($integration->access_token),
                 'has_refresh_token' => !empty($integration->refresh_token)
             ]);

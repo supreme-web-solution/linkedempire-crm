@@ -74,9 +74,14 @@ class LinkedInService
             ->json();
     }
 
-    public function getUserProfile($access_token)
+    public function getUserProfile($access_token, bool $includeVanityName = false)
     {
         $api_url = $this->api . '/me';
+
+        $params = [];
+        if ($includeVanityName) {
+            $params['projection'] = '(id,vanityName,localizedFirstName,localizedLastName)';
+        }
 
         $headers = [
             'Authorization' => 'Bearer ' . $access_token,
@@ -85,6 +90,7 @@ class LinkedInService
         ];
 
         return Http::withHeaders($headers)
+            ->when(!empty($params), fn ($request) => $request->withQueryParameters($params))
             ->get($api_url)
             ->throw()
             ->json();
