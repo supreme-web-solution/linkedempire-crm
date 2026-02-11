@@ -101,7 +101,7 @@
                         <input type="checkbox" id="multipleDrafts" 
                                class="w-4 h-4 bg-gray-100 border-gray-300 rounded focus:ring-[#0077b5]" style="accent-color: #0077b5;">
                         <span class="ml-2 text-sm text-gray-700">
-                            Generate 2 variations <span class="text-xs text-gray-500">(Taplio-style)</span>
+                            Generate 2 variations
                         </span>
                     </label>
                 </div>
