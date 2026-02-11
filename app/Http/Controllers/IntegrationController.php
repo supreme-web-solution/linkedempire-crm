@@ -13,7 +13,8 @@ class IntegrationController extends Controller
     {
         $linkedin = new LinkedInService;
 
-        return redirect()->away($linkedin->login());
+        $prompt = request()->query('prompt', 'consent');
+        return redirect()->away($linkedin->login($prompt));
     }
 
     public function callback(Request $request)
@@ -35,6 +36,10 @@ class IntegrationController extends Controller
         // Check if params values are flagged
         if (isset($oauth_error)){
             Log::error('❌ OAuth Error: Connection cancelled', ['error' => $oauth_error]);
+            if ($oauth_error === 'login_required') {
+                Log::info('🔁 Silent login failed, retrying with prompt=login');
+                return redirect()->route('integration.login', ['prompt' => 'login']);
+            }
             notify()->error('Connection to linkedin was cancelled.');
             return redirect()->route('social-account.index');
         }elseif (isset($oauth_state) && $oauth_state != $linkedin->state){

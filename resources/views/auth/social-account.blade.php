@@ -7,6 +7,11 @@
         'favicon' => asset('images/logo-1.png'),
     ])
 @section('content')
+@php
+    $hasLinkedInConnected = $accounts->contains(function ($account) {
+        return $account->oauth_provider === 'linkedin' && (int) $account->connected_status === 1;
+    });
+@endphp
 <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
         <h2 class="text-lg font-semibold text-gray-900">
@@ -14,16 +19,18 @@
         </h2>
         <p class="text-sm text-gray-500 mt-1">Connect LinkedIn, then paste your session cookie once so every automation can run under your profile.</p>
     </div>
-    <button type="button"
-    class="block px-4 py-3 text-sm font-medium leading-2 
-    text-white transition-all duration-150 
-    border border-transparent rounded-lg"
-    style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);"
-    onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';"
-    onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';"
-    aria-haspopup="dialog" aria-expanded="false" aria-controls="hs-basic-modal" data-hs-overlay="#hs-basic-modal">
-        Connect
-    </button>
+    @if(!$hasLinkedInConnected)
+        <button type="button"
+        class="block px-4 py-3 text-sm font-medium leading-2 
+        text-white transition-all duration-150 
+        border border-transparent rounded-lg"
+        style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);"
+        onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';"
+        onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';"
+        aria-haspopup="dialog" aria-expanded="false" aria-controls="hs-basic-modal" data-hs-overlay="#hs-basic-modal">
+            Connect
+        </button>
+    @endif
 </div>
 
 <div class="mt-6 space-y-4">
@@ -173,6 +180,10 @@
                         <span class="">LinkedIn</span>
                         <p class="text-xs">Connect your linkedin account</p>
                     </div>
+                    <div class="ml-auto hidden items-center gap-2 text-xs text-[#0077b5] linkedin-connecting">
+                        <span class="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                        <span>Connecting...</span>
+                    </div>
                 </button>
             </div>
             <div class="flex justify-end items-center gap-x-2 py-3 px-4 border-t border-gray-200">
@@ -185,7 +196,11 @@
 </div>
 <script>
     $('.linkedin-login').click(function(){
-        window.location = "{{route('integration.login')}}"
+        const btn = $(this);
+        btn.prop('disabled', true);
+        btn.addClass('pointer-events-none opacity-80');
+        btn.find('.linkedin-connecting').removeClass('hidden').addClass('inline-flex');
+        window.location = "{{route('integration.login')}}";
     })
 </script>
 @endsection

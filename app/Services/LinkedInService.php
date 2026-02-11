@@ -23,13 +23,15 @@ class LinkedInService
         $this->state = config('services.linkedin.state');
     }
 
-    public function login()
+    public function login(string $prompt = 'consent')
     {
         $url = 'https://www.linkedin.com/oauth/v2/authorization';
 
         $callback_url = URL::route('integration.callback');
 
-        return "{$url}?response_type=code&client_id={$this->client}&redirect_uri={$callback_url}&state={$this->state}&scope=openid%20profile%20email%20w_member_social%20r_basicprofile%20r_organization_social%20w_organization_social%20rw_organization_admin";
+        $prompt = in_array($prompt, ['none', 'login', 'consent'], true) ? $prompt : 'none';
+
+        return "{$url}?response_type=code&client_id={$this->client}&redirect_uri={$callback_url}&state={$this->state}&scope=openid%20profile%20email%20w_member_social%20r_basicprofile%20r_organization_social%20w_organization_social%20rw_organization_admin&prompt={$prompt}";
         // return "{$url}?response_type=code&client_id={$this->client}&redirect_uri={$callback_url}&state={$this->state}&scope=openid%20profile%20email%20w_member_social%20r_liteprofile%20r_organization_social%20w_organization_social%20rw_organization_admin";
     }
 
