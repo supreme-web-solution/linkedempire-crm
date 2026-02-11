@@ -387,7 +387,7 @@
 
 <!-- How to Use Guide (Show only if no posts yet) -->
 @if($stats['total_posts'] == 0)
-<div class="bg-gradient-to-r from-blue-50 to-blue-50 border border-[#0077b5] rounded-lg p-6 mb-8">
+{{-- <div class="bg-gradient-to-r from-blue-50 to-blue-50 border border-[#0077b5] rounded-lg p-6 mb-8">
     <div class="flex items-start">
         <div class="flex-shrink-0">
             <i class="fas fa-lightbulb text-[#0077b5] text-2xl"></i>
@@ -405,7 +405,7 @@
             </div>
         </div>
     </div>
-</div>
+</div> --}}
 @endif
 
 <!-- Viral Posts Grid -->
