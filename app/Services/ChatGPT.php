@@ -519,14 +519,15 @@ EOD;
 
         // Generate content with higher token limit for LinkedIn posts
         $result = $this->generateLinkedInContent($prompt);
+        $content = $this->formatLinkedInPost($result['content']);
         
         // Extract hashtags
-        $hashtags = $this->extractHashtags($result['content']);
+        $hashtags = $this->extractHashtags($content);
         
         return [
-            'content' => $result['content'],
+            'content' => $content,
             'hashtags' => $hashtags,
-            'word_count' => $result['words']
+            'word_count' => str_word_count($content)
         ];
     }
 
@@ -780,6 +781,7 @@ EOD;
                 if (!empty($text)) {
                     $content = trim($text);
                     $content = $this->cleanJsonResponse($content);
+                    $content = $this->formatLinkedInPost($content);
             
             $drafts[] = [
                         'content' => $content,
@@ -844,10 +846,48 @@ EOD;
         
         // Generate improved content
         $result = $this->generateContent($prompt);
+        $formatted = $this->formatLinkedInPost($result['content']);
         
         return [
-            'content' => $result['content'],
-            'word_count' => $result['words']
+            'content' => $formatted,
+            'word_count' => str_word_count($formatted)
         ];
+    }
+
+    /**
+     * Normalize AI output for clean LinkedIn formatting.
+     */
+    private function formatLinkedInPost(string $content): string
+    {
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
+        $content = str_replace('**', '', $content);
+        $content = str_replace('—', ' - ', $content);
+
+        // Ensure space after emojis when followed by text
+        $content = preg_replace('/([\x{1F300}-\x{1FAFF}])([A-Za-z0-9])/u', '$1 $2', $content);
+
+        // Add a clean break before common list intros when jammed into prior sentence
+        $content = preg_replace('/([.!?])\s*(Here (are|is|\'s)\b)/', "$1\n\n$2", $content);
+
+        // Add line breaks before numbered lists or bullets if jammed
+        $content = preg_replace('/([^\n])(\d+\.)\s+/', "$1\n$2 ", $content);
+        $content = preg_replace('/([^\n])\s*([•\-])\s+/', "$1\n$2 ", $content);
+        $content = preg_replace('/:\s*(\d+\.)\s+/', "\n\n$1 ", $content);
+        $content = preg_replace('/\n(\d+\.)/', "\n\n$1", $content);
+        $content = preg_replace('/\n([•\-])\s+/', "\n\n$1 ", $content);
+
+        // Extract hashtags and move them to the end on their own line
+        $hashtags = $this->extractHashtags($content);
+        if (!empty($hashtags)) {
+            $content = preg_replace('/\s*#\w+/', '', $content);
+            $content = trim($content);
+            $content .= "\n\n" . $hashtags;
+        }
+
+        // Normalize spacing/newlines
+        $content = preg_replace("/[ \t]+/", ' ', $content);
+        $content = preg_replace("/\n{3,}/", "\n\n", $content);
+
+        return trim($content);
     }
 }
