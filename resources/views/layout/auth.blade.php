@@ -28,6 +28,23 @@
 
     <!-- @notifyCss -->
     <style type="text/css">
+        :root {
+            --social-toast-offset: 0px;
+        }
+
+        body.has-social-toast {
+            padding-top: var(--social-toast-offset);
+        }
+
+        body.has-social-toast header {
+            top: var(--social-toast-offset);
+        }
+
+        body.has-social-toast #hs-application-sidebar {
+            top: var(--social-toast-offset);
+            height: calc(100% - var(--social-toast-offset));
+        }
+
         .notify{
             z-index: 1001 !important;
         }
@@ -694,7 +711,7 @@
     (function() {
         const TOAST_DISMISSED_KEY = 'socialAccountReminderDismissed';
         const TOAST_LAST_DISMISSED_KEY = 'socialAccountReminderLastDismissed';
-        const THREE_MINUTES_MS = 120 * 60 * 1000; // 2 hours in milliseconds
+        const THREE_MINUTES_MS = 600 * 60 * 1000; // 2 hours in milliseconds
         const toast = document.getElementById('socialAccountReminderToast');
         const dismissBtn = document.getElementById('dismissSocialAccountReminder');
         let reminderInterval = null;
@@ -729,31 +746,27 @@
             return timeSinceLastDismissed >= THREE_MINUTES_MS;
         }
         
+        function setToastOffset(height) {
+            const offset = Math.max(0, height || 0);
+            document.documentElement.style.setProperty('--social-toast-offset', `${offset}px`);
+            document.body.classList.toggle('has-social-toast', offset > 0);
+        }
+
         function showToast() {
             if (shouldShowToast()) {
                 toast.classList.remove('hidden');
-                // Adjust header position to account for toast
-                const header = document.getElementById('mainHeader');
-                if (header) {
-                    header.style.top = '48px'; // Approximate height of toast
-                }
+                const height = toast.getBoundingClientRect().height;
+                setToastOffset(height);
             } else {
                 // Hide if conditions not met (e.g., on social account page or not enough time passed)
                 toast.classList.add('hidden');
-                const header = document.getElementById('mainHeader');
-                if (header) {
-                    header.style.top = '0';
-                }
+                setToastOffset(0);
             }
         }
         
         function hideToast() {
             toast.classList.add('hidden');
-            // Reset header position
-            const header = document.getElementById('mainHeader');
-            if (header) {
-                header.style.top = '0';
-            }
+            setToastOffset(0);
         }
         
         function dismissToast() {
