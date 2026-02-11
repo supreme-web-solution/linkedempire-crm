@@ -331,13 +331,6 @@
                 </div>
                 
                 <div class="flex space-x-2">
-                    @if($post->status === 'published')
-                    <button onclick="viewAnalytics({{ $post->id }})" 
-                            class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors">
-                        Analytics
-                    </button>
-                    @endif
-                    
                     @if($post->status !== 'published')
                     <button onclick="deletePost({{ $post->id }})" 
                             class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-md transition-colors">
@@ -459,13 +452,6 @@
                         <button onclick="editSchedule({{ $post->id }})" 
                                 class="px-3 py-1 text-white text-xs rounded-md transition-all whitespace-nowrap" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)';">
                             <i class="fas fa-edit mr-1"></i>Edit Schedule
-                        </button>
-                        @endif
-                        
-                        @if($post->status === 'published')
-                        <button onclick="viewAnalytics({{ $post->id }})" 
-                                class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded-md transition-colors whitespace-nowrap">
-                            <i class="fas fa-chart-line mr-1"></i>Analytics
                         </button>
                         @endif
                         
@@ -796,18 +782,6 @@ function deletePost(postId) {
             alert('An error occurred while deleting the post.');
         });
     }
-}
-
-function viewAnalytics(postId) {
-    fetch(`/content-creator/analytics/${postId}`)
-    .then(response => response.json())
-    .then(data => {
-        alert(`Analytics for Post ${postId}:\n\nLikes: ${data.engagement.likes}\nComments: ${data.engagement.comments}\nShares: ${data.engagement.shares}\nViews: ${data.engagement.views}\nEngagement Rate: ${data.engagement_rate}%`);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while fetching analytics.');
-    });
 }
 
 // Schedule form submission
