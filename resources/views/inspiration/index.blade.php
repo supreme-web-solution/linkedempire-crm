@@ -535,7 +535,7 @@
         </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">No viral posts saved yet</h3>
         <p class="text-gray-500 mb-6">Start saving high-performing LinkedIn posts for inspiration</p>
-        <div class="bg-white rounded-lg shadow-lg p-6 max-w-md mx-auto text-left">
+        {{-- <div class="bg-white rounded-lg shadow-lg p-6 max-w-md mx-auto text-left">
             <h4 class="font-semibold text-gray-900 mb-3">How to save viral posts:</h4>
             <ol class="space-y-2 text-sm text-gray-700">
                 <li class="flex items-start">
@@ -555,7 +555,7 @@
                     <span>Posts appear here instantly!</span>
                 </li>
             </ol>
-        </div>
+        </div> --}}
     </div>
     @endforelse
 </div>
