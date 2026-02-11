@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Integration;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -20,8 +21,15 @@ class SocialAccountController extends Controller
     public function disconnect(string $id)
     {
         $account = Integration::findOrFail($id);
+        abort_if($account->user_id !== auth()->id(), 403);
+        $userId = $account->user_id;
+        $provider = $account->oauth_provider;
 
         $account->delete();
+
+        if ($provider === 'linkedin') {
+            User::where('id', $userId)->update(['linkedin_id' => null]);
+        }
 
         notify()->success('Account disconnected');
         return redirect()->route('social-account.index');
