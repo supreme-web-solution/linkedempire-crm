@@ -1,5 +1,8 @@
 <form method="post" action="{{route('campaign.update', ['id' => $cid])}}">
     @csrf
+    @php
+        $processConditions = json_decode($campaign->process_condition ?? '[]', true) ?: [];
+    @endphp
     <div class="grid grid-cols-12 gap-6 pt-4 pb-8">
         <div class="col-span-6">
             <div class="flex justify-between">
@@ -12,7 +15,7 @@
             <div class="mt-4 space-y-6">
                 <div class="relative flex gap-x-4">
                     <div class="flex h-6 items-center">
-                        <input id="lead_on_other_campaign" name="process_condition[]" value="lead_on_other_campaign" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ $campaign['process_condition'] && in_array('lead_on_other_campaign', json_decode($campaign['process_condition'])) ? 'checked':''}}>
+                        <input id="lead_on_other_campaign" name="process_condition[]" value="lead_on_other_campaign" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ in_array('lead_on_other_campaign', $processConditions, true) ? 'checked' : '' }}>
                     </div>
                     <div class="text-sm leading-6">
                         <label for="lead_on_other_campaign" class="font-medium text-gray-900">
@@ -22,7 +25,7 @@
                 </div>
                 <div class="relative flex gap-x-4">
                     <div class="flex h-6 items-center">
-                        <input id="no_profile_photo" name="process_condition[]" value="no_profile_photo" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ $campaign['process_condition'] && in_array('no_profile_photo', json_decode($campaign['process_condition'])) ? 'checked':'' }}>
+                        <input id="no_profile_photo" name="process_condition[]" value="no_profile_photo" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ in_array('no_profile_photo', $processConditions, true) ? 'checked' : '' }}>
                     </div>
                     <div class="text-sm leading-6">
                         <label for="no_profile_photo" class="font-medium text-gray-900">
@@ -32,7 +35,7 @@
                 </div>
                 <div class="relative flex gap-x-4">
                     <div class="flex h-6 items-center">
-                        <input id="less_than_500_connect" name="process_condition[]" value="less_than_500_connect" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ $campaign['process_condition'] && in_array('less_than_500_connect', json_decode($campaign['process_condition'])) ? 'checked':'' }}>
+                        <input id="less_than_500_connect" name="process_condition[]" value="less_than_500_connect" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ in_array('less_than_500_connect', $processConditions, true) ? 'checked' : '' }}>
                     </div>
                     <div class="text-sm leading-6">
                         <label for="less_than_500_connect" class="font-medium text-gray-900">
@@ -42,7 +45,7 @@
                 </div>
                 <div class="relative flex gap-x-4">
                     <div class="flex h-6 items-center">
-                        <input id="free_linkedin_account" name="process_condition[]" value="free_linkedin_account" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ $campaign['process_condition'] && in_array('free_linkedin_account', json_decode($campaign['process_condition'])) ? 'checked':'' }}>
+                        <input id="free_linkedin_account" name="process_condition[]" value="free_linkedin_account" type="checkbox" class="h-4 w-4 rounded border-gray-300 focus:ring-[#0077b5]" style="accent-color: #0077b5;" {{ in_array('free_linkedin_account', $processConditions, true) ? 'checked' : '' }}>
                     </div>
                     <div class="text-sm leading-6">
                         <label for="free_linkedin_account" class="font-medium text-gray-900">

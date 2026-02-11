@@ -396,7 +396,7 @@
             <h3 class="text-lg font-semibold text-gray-900 mb-2">How to Build Your Inspiration Library</h3>
             <div class="space-y-2 text-sm text-gray-700">
                 <p><strong>Step 1:</strong> Browse LinkedIn feed and find high-engagement posts</p>
-                <p><strong>Step 2:</strong> Click the <span class="px-2 py-1 text-white rounded text-xs" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">Save to LinkDominator</span> button (from Chrome extension)</p>
+                <p><strong>Step 2:</strong> Click the <span class="px-2 py-1 text-white rounded text-xs" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">Save to LinkedEmpire</span> button (from Chrome extension)</p>
                 <p><strong>Step 3:</strong> Posts appear here with engagement metrics</p>
                 <p><strong>Step 4:</strong> Click "Use as Inspiration" to remix them in your voice</p>
             </div>
@@ -540,7 +540,7 @@
             <ol class="space-y-2 text-sm text-gray-700">
                 <li class="flex items-start">
                     <span class="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs mr-2" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">1</span>
-                    <span>Install LinkDominator Chrome Extension</span>
+                    <span>Install LinkedEmpire Chrome Extension</span>
                 </li>
                 <li class="flex items-start">
                     <span class="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs mr-2" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">2</span>
@@ -548,7 +548,7 @@
                 </li>
                 <li class="flex items-start">
                     <span class="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs mr-2" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">3</span>
-                    <span>Click "Save to LinkDominator" on posts with high engagement</span>
+                    <span>Click "Save to LinkedEmpire" on posts with high engagement</span>
                 </li>
                 <li class="flex items-start">
                     <span class="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs mr-2" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">4</span>
