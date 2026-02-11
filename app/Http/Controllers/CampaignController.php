@@ -163,7 +163,9 @@ class CampaignController extends Controller
 
         // Calculate campaign statistics
         $totalCampaigns = Campaign::where('user_id', $userId)->count();
-        $runningCampaigns = Campaign::where('user_id', $userId)->where('status', 'running')->count();
+        $runningCampaigns = Campaign::where('user_id', $userId)
+            ->whereIn('status', ['running', 'active'])
+            ->count();
         $completedCampaigns = Campaign::where('user_id', $userId)->where('status', 'completed')->count();
         
         // Calculate total leads across all campaigns

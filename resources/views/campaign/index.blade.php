@@ -97,6 +97,7 @@ function updateCampaignRow(campaign) {
 
 function getStatusClass(status) {
     switch(status.toLowerCase()) {
+        case 'active':
         case 'running':
             return 'text-green-600';
         case 'completed':
@@ -244,7 +245,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             <a href="{{route('campaign.create', ['step' => 'lead', 'cid' => $item->id])}}" class="hover:underline">{{ $item->name }}</a>
                         </div>
                     </div>
-                    <small class="font-normal text-gray-400 uppercase campaign-status {{ $item->status == 'running' ? 'text-green-600' : ($item->status == 'completed' ? 'text-blue-600' : ($item->status == 'stop' ? 'text-red-600' : 'text-gray-600')) }}">{{ $item->status }}</small>
+                    @php($statusLabel = $item->status === 'active' ? 'running' : $item->status)
+                    <small class="font-normal text-gray-400 uppercase campaign-status {{ in_array($item->status, ['running', 'active'], true) ? 'text-green-600' : ($item->status == 'completed' ? 'text-blue-600' : ($item->status == 'stop' ? 'text-red-600' : 'text-gray-600')) }}">{{ $statusLabel }}</small>
                 </div>
             </div>
             <div class="col-span-3 flex">
