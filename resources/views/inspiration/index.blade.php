@@ -385,28 +385,6 @@
     </form>
 </div>
 
-<!-- How to Use Guide (Show only if no posts yet) -->
-@if($stats['total_posts'] == 0)
-{{-- <div class="bg-gradient-to-r from-blue-50 to-blue-50 border border-[#0077b5] rounded-lg p-6 mb-8">
-    <div class="flex items-start">
-        <div class="flex-shrink-0">
-            <i class="fas fa-lightbulb text-[#0077b5] text-2xl"></i>
-        </div>
-        <div class="ml-4">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">How to Build Your Inspiration Library</h3>
-            <div class="space-y-2 text-sm text-gray-700">
-                <p><strong>Step 1:</strong> Browse LinkedIn feed and find high-engagement posts</p>
-                <p><strong>Step 2:</strong> Click the <span class="px-2 py-1 text-white rounded text-xs" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);">Save to LinkedEmpire</span> button (from Chrome extension)</p>
-                <p><strong>Step 3:</strong> Posts appear here with engagement metrics</p>
-                <p><strong>Step 4:</strong> Click "Use as Inspiration" to remix them in your voice</p>
-            </div>
-            <div class="mt-4 p-3 bg-white rounded-lg">
-                <p class="text-xs text-gray-600"><strong>💡 Pro Tip:</strong> Save posts with 1000+ likes for best inspiration. The Chrome extension will analyze engagement automatically!</p>
-            </div>
-        </div>
-    </div>
-</div> --}}
-@endif
 
 <!-- Viral Posts Grid -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
