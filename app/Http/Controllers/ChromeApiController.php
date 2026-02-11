@@ -92,6 +92,26 @@ class ChromeApiController extends Controller
             }
 
             $linkedin_Id = $request->query('linkedinId');
+            $user = null;
+
+            if ($request->hasHeader('lk-id')) {
+                try {
+                    $user = $this->checkAuthorization($request);
+                } catch (Exception $e) {
+                    return $this->errorResponse($e->getMessage(), 401);
+                }
+            }
+
+            if (!$user) {
+                $user = User::where('linkedin_id', $linkedin_Id)
+                    ->orderByDesc('updated_at')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            if (!$user) {
+                return $this->errorResponse('User not found for LinkedIn ID', 404);
+            }
             
             Log::info('Fetching audiences for LinkedIn ID', [
                 'linkedin_id' => $linkedin_Id,
@@ -109,13 +129,14 @@ class ChromeApiController extends Controller
                 FROM audiences a
                 JOIN users u ON u.id = a.user_id 
                 LEFT JOIN audience_lists al ON al.audience_id = a.audience_id
-                WHERE u.linkedin_id = ? 
+                WHERE u.id = ? 
                 GROUP BY a.id, a.audience_name, a.audience_id, a.audience_type
                 ORDER BY DATE(a.created_at) DESC
-            ", [$linkedin_Id]);
+            ", [$user->id]);
 
             Log::info('Audiences retrieved successfully', [
-                'linkedin_id' => $linkedin_Id,
+                'linkedin_id' => $user->linkedin_id,
+                'user_id' => $user->id,
                 'count' => count($audiences)
             ]);
 

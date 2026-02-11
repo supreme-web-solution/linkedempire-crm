@@ -624,16 +624,13 @@ class CampaignController extends Controller
     public function campaign(Request $request)
     {
         try {
-            $this->checkAuthorization($request);
+            $user = $this->checkAuthorization($request);
         } catch (\Throwable $th) {
             return response()->json([
                 "message" => $th->getMessage(),
                 "status" => 400
             ], 400);
         }
-
-        $lkId = $request->header('lk-id');
-        $user = User::where('linkedin_id', $lkId)->first();
         $campaign_data = [];
 
         if ($user) {

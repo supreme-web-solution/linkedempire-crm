@@ -24,7 +24,10 @@ trait CampaignHelper
             throw new Exception("LinkedIn ID cannot be empty", 401);
         }
         
-        $user = User::where('linkedin_id', $linkedinId)->first();
+        $user = User::where('linkedin_id', $linkedinId)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
         if(!$user){
             // Log::warning('Unauthorized access attempt', [
             //     'linkedin_id' => $linkedinId,
