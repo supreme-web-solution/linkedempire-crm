@@ -326,10 +326,12 @@ class InspirationController extends Controller
     public function useAsInspiration($id)
     {
         $post = ViralPost::where('user_id', auth()->id())->findOrFail($id);
+        $chatGPT = new ChatGPT();
+        $formatted = $chatGPT->formatPost($post->content);
 
         return response()->json([
             'success' => true,
-            'content' => $post->content,
+            'content' => $formatted,
             'author' => $post->author_name,
             'engagement' => [
                 'likes' => $post->likes,

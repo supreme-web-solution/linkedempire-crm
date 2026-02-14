@@ -553,11 +553,20 @@ EOD;
 
         // Generate content
         $result = $this->generateContent($prompt);
-        
+        $formatted = $this->formatLinkedInPost($result['content']);
+
         return [
-            'content' => $result['content'],
-            'word_count' => $result['words']
+            'content' => $formatted,
+            'word_count' => str_word_count($formatted)
         ];
+    }
+
+    /**
+     * Expose LinkedIn formatting for non-AI content (e.g., inspiration posts).
+     */
+    public function formatPost(string $content): string
+    {
+        return $this->formatLinkedInPost($content);
     }
 
     /**

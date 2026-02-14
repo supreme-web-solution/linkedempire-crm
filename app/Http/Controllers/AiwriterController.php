@@ -123,8 +123,14 @@ class AiwriterController extends Controller
 
         try {
             $gpt = new ChatGPT($data);
+            $result = $gpt->generate();
+            if (is_array($result) && isset($result['content'])) {
+                $formatted = $gpt->formatPost($result['content']);
+                $result['content'] = $formatted;
+                $result['words'] = str_word_count($formatted);
+            }
 
-            return $gpt->generate();
+            return response()->json($result);
 
         } catch (\Throwable $th) {
             return response()->json([
