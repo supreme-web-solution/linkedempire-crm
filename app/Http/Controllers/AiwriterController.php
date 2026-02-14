@@ -125,7 +125,7 @@ class AiwriterController extends Controller
             $gpt = new ChatGPT($data);
             $result = $gpt->generate();
             if (is_array($result) && isset($result['content'])) {
-                $formatted = $gpt->formatPost($result['content']);
+                $formatted = $gpt->formatAiwriterContent($result['content'], $request->aitype);
                 $result['content'] = $formatted;
                 $result['words'] = str_word_count($formatted);
             }

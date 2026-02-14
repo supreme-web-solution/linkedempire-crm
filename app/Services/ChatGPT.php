@@ -570,6 +570,31 @@ EOD;
     }
 
     /**
+     * Format AI-writer content for readability (emails/messages).
+     */
+    public function formatAiwriterContent(string $content, ?string $aiType = null): string
+    {
+        $content = str_replace(["\r\n", "\r"], "\n", $content);
+        $content = str_replace('**', '', $content);
+
+        // Break out subject line if present
+        $content = preg_replace('/^\s*Subject:\s*/i', 'Subject: ', $content);
+        $content = preg_replace('/(Subject:[^\n]+)\s*(Dear\b)/i', "$1\n\n$2", $content);
+
+        // Add a clear break after greeting
+        $content = preg_replace('/(Dear[^,\n]*,)\s*/i', "$1\n\n", $content);
+
+        // Add a break before common sign-offs
+        $content = preg_replace('/\s*(Warm regards|Best regards|Kind regards|Sincerely|Regards),/i', "\n\n$1,", $content);
+
+        // Normalize spacing/newlines
+        $content = preg_replace("/[ \t]+/", ' ', $content);
+        $content = preg_replace("/\n{3,}/", "\n\n", $content);
+
+        return trim($content);
+    }
+
+    /**
      * Build LinkedIn post prompt based on parameters
      */
     private function buildLinkedInPostPrompt($topic, $style, $length)
