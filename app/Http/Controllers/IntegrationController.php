@@ -140,9 +140,21 @@ class IntegrationController extends Controller
             $linkedinPublicId = $profile['vanityName']
                 ?? $openIdProfile['preferred_username']
                 ?? null;
+            $linkedinIdConflict = false;
 
             if ($linkedinPublicId) {
-                auth()->user()->update(['linkedin_id' => $linkedinPublicId]);
+                $linkedinIdConflict = \App\Models\User::where('linkedin_id', $linkedinPublicId)
+                    ->where('id', '!=', auth()->id())
+                    ->exists();
+
+                if ($linkedinIdConflict) {
+                    Log::warning('LinkedIn ID already linked to another user', [
+                        'linkedin_id' => $linkedinPublicId,
+                        'current_user_id' => auth()->id(),
+                    ]);
+                } else {
+                    auth()->user()->update(['linkedin_id' => $linkedinPublicId]);
+                }
             }
 
             Log::info('✅✅✅ LinkedIn Integration Created Successfully ✅✅✅', [
@@ -156,7 +168,11 @@ class IntegrationController extends Controller
 
             Log::info('========== OAuth Callback Completed ==========');
 
-            notify()->success('LinkedIn account connected successfully.');
+            if ($linkedinIdConflict) {
+                notify()->warning('LinkedIn account connected, but this LinkedIn ID is already linked to another user. Please disconnect it there first.');
+            } else {
+                notify()->success('LinkedIn account connected successfully.');
+            }
             return redirect()->route('social-account.index');
         } catch (\Throwable $th) {
             Log::error('❌ Failed to create integration record', [
