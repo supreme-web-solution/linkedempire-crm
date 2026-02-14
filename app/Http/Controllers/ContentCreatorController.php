@@ -193,20 +193,31 @@ class ContentCreatorController extends Controller
             // Check if multiple drafts are requested
             if ($request->multiple_drafts) {
                 $drafts = $chatGPT->generateMultipleDrafts();
+                $safeDrafts = collect($drafts)->map(function ($draft) {
+                    if (!is_array($draft)) {
+                        return $draft;
+                    }
+                    $draft['content'] = $this->ensureUtf8($draft['content'] ?? '');
+                    $draft['hashtags'] = $this->ensureUtf8($draft['hashtags'] ?? '');
+                    $draft['word_count'] = str_word_count($draft['content']);
+                    return $draft;
+                })->toArray();
                 
                 return response()->json([
                     'success' => true,
-                    'drafts' => $drafts
+                    'drafts' => $safeDrafts
                 ]);
             } else {
                 // Single draft (backward compatibility)
                 $result = $chatGPT->generateLinkedInPost();
+                $safeContent = $this->ensureUtf8($result['content'] ?? '');
+                $safeHashtags = $this->ensureUtf8($result['hashtags'] ?? '');
 
                 return response()->json([
                     'success' => true,
-                    'content' => $result['content'],
-                    'hashtags' => $result['hashtags'] ?? '',
-                    'word_count' => $result['word_count'] ?? 0
+                    'content' => $safeContent,
+                    'hashtags' => $safeHashtags,
+                    'word_count' => str_word_count($safeContent)
                 ]);
             }
 
@@ -382,6 +393,22 @@ class ContentCreatorController extends Controller
         $templates = $query->orderBy('engagement_score', 'desc')->get();
         
         return response()->json(['templates' => $templates]);
+    }
+
+    /**
+     * Ensure strings are valid UTF-8 to avoid JSON encoding errors.
+     */
+    private function ensureUtf8($value)
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 
     /**
