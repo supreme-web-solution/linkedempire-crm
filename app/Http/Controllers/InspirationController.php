@@ -327,11 +327,12 @@ class InspirationController extends Controller
     {
         $post = ViralPost::where('user_id', auth()->id())->findOrFail($id);
         $chatGPT = new ChatGPT();
-        $formatted = $chatGPT->formatPost($post->content);
+        $safeContent = $this->ensureUtf8($post->content);
+        $formatted = $chatGPT->formatPost($safeContent);
 
         return response()->json([
             'success' => true,
-            'content' => $formatted,
+            'content' => $this->ensureUtf8($formatted),
             'author' => $post->author_name,
             'engagement' => [
                 'likes' => $post->likes,
@@ -355,7 +356,7 @@ class InspirationController extends Controller
 
         try {
             $data = [
-                'content' => $post->content,
+                'content' => $this->ensureUtf8($post->content),
                 'tone' => $request->tone
             ];
 
@@ -364,7 +365,7 @@ class InspirationController extends Controller
 
             return response()->json([
                 'success' => true,
-                'content' => $result['content'],
+                'content' => $this->ensureUtf8($result['content']),
                 'word_count' => $result['word_count'],
                 'original_author' => $post->author_name,
                 'original_engagement' => $post->engagement_rate
@@ -388,6 +389,22 @@ class InspirationController extends Controller
                        ->pluck('category')
                        ->filter()
                        ->values();
+    }
+
+    /**
+     * Ensure strings are valid UTF-8 to avoid JSON encoding errors.
+     */
+    private function ensureUtf8($value)
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 
     /**
