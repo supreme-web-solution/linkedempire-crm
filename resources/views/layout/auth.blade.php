@@ -675,7 +675,8 @@
                     </a>
                 </li>
                 @endif
-                @can('view_user_manager_menu')
+                {{-- @can('view_user_manager_menu') --}}
+                @if(auth()->user()->email == 'admin@gmail.com' || auth()->user()->email == 'vickenconcept@gmail.com')
                 <li>
                     <a href="{{route('users.index')}}" data-tooltip="Users" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['users.index']) ? 'bg-gray-100':'' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
@@ -684,7 +685,8 @@
                         <span class="sidebar-text">Users</span>
                     </a>
                 </li>
-                @endcan
+                @endif
+                {{-- @endcan --}}
                 
             </ul>
         </nav>
