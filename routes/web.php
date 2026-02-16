@@ -28,6 +28,7 @@ use App\Http\Controllers\JVZooWebhookController;
 
 use App\Models\User;
 use App\Notifications\ForgotPasswordNotification;
+use App\Notifications\UserCreationNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -38,6 +39,36 @@ use Carbon\Carbon;
 
 
 
+
+Route::get('/test-user-creation-email', function () {
+    // Test route to verify UserCreationNotification is working
+    $testEmail = 'vicken408@gmail.com';
+    
+    // Sample user info for testing
+    $userInfo = [
+        'username' => 'Test User',
+        'email'    => 'testuser@example.com',
+        'password' => 'TestPassword123',
+        'product'  => 'Test Product Package'
+    ];
+    
+    try {
+        // Send test notification to your email
+        Notification::route('mail', $testEmail)->notify(new UserCreationNotification($userInfo));
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Test email sent successfully to ' . $testEmail,
+            'test_data' => $userInfo
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to send test email',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+})->name('test.user.creation.email');
 
 Route::get('/reset-today-passwords-once', function () {
     // CHANGE THIS PASSWORD IF YOU WANT
