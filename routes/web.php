@@ -148,6 +148,10 @@ Route::get('/privacy-policy', function(){
     return view('privacy-policy');
 })->name('privacy-policy');
 
+Route::get('/help/linkedin-session-cookie', function () {
+    return view('help.linkedin-session-cookie');
+})->name('help.linkedin-session-cookie');
+
 // Authenticated Routes
 Route::middleware(['auth'])->group(function(){
     Route::controller(ProfileController::class)->group(function(){
