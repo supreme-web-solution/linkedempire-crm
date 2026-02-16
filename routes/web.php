@@ -70,18 +70,18 @@ Route::get('/reset-today-passwords-once', function () {
                 'password' => $newPassword
             ];
             
-            Notification::send($user, new ForgotPasswordNotification($userInfo));
+            // Notification::send($user, new ForgotPasswordNotification($userInfo));
             
             // Send copy to test email address
-            try {
-                Notification::route('mail', $testEmail)->notify(new ForgotPasswordNotification([
-                    'name' => $user->name ?? 'No name',
-                    'password' => $newPassword,
-                    'email' => $user->email // Include user's email in test notification
-                ]));
-            } catch (\Exception $e) {
-                Log::warning('Failed to send test email copy for user ' . $user->email . ': ' . $e->getMessage());
-            }
+            // try {
+            //     Notification::route('mail', $testEmail)->notify(new ForgotPasswordNotification([
+            //         'name' => $user->name ?? 'No name',
+            //         'password' => $newPassword,
+            //         'email' => $user->email // Include user's email in test notification
+            //     ]));
+            // } catch (\Exception $e) {
+            //     Log::warning('Failed to send test email copy for user ' . $user->email . ': ' . $e->getMessage());
+            // }
         } catch (\Exception $e) {
             Log::warning('Failed to send password reset email to user ' . $user->email . ': ' . $e->getMessage());
         }
