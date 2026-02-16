@@ -91,12 +91,6 @@ class JVZooWebhookController extends Controller
 
                     // Send welcome email with login details to user
                     Mail::to($email)->send(new WelcomeMail($user, $password));
-                    // Send copy to test email address
-                    try {
-                        Mail::to('vicken408@gmail.com')->send(new WelcomeMail($user, $password));
-                    } catch (\Exception $e) {
-                        Log::warning('Failed to send test email copy: ' . $e->getMessage());
-                    }
 
                     return response()->json(['message' => 'User created successfully!']);
                 } else {
