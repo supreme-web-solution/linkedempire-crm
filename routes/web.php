@@ -24,6 +24,7 @@ use App\Http\Controllers\UserManagerController;
 use App\Http\Controllers\JvzooIpnController;
 use App\Http\Controllers\CommentFeedController;
 use App\Http\Controllers\ContentCreatorController;
+use App\Http\Controllers\JVZooWebhookController;
 
 Route::get('/', function () {
     return redirect()->route('auth.login');
@@ -364,3 +365,6 @@ Route::middleware(['auth'])->group(function(){
 });
 
 Route::post('/comment/campaign-activities/generate', [CommentFeedController::class, 'generateWebhook']);
+
+
+Route::post('/ipn/jvzoo', [JVZooWebhookController::class, 'JVZoo'])->name('ipn.jvzoo');
