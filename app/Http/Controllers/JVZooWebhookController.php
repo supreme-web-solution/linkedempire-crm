@@ -5,8 +5,15 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Product;
+use App\Models\ProductTransaction;
+use App\Helpers\DeleteUserResource;
+use App\Notifications\UserCreationNotification;
+use App\Notifications\UserRefundNotification;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 
 class JVZooWebhookController extends Controller
@@ -74,10 +81,45 @@ class JVZooWebhookController extends Controller
                     $user->assignRole('User');
                     $user->givePermissionTo($product->funnel);
 
+                    // Create product transaction
+                    ProductTransaction::create([
+                        'user_id'           => $user->id,
+                        'product_id'        => $productID,
+                        'transaction_id'   => $transactionID,
+                        'transaction_type' => 'SALE'
+                    ]);
+
+                    // Send email notification with login details
+                    $userInfo = [
+                        'username' => $user->name,
+                        'email'    => $email,
+                        'password' => $password,
+                        'product'  => $product->name
+                    ];
+
+                    Notification::send($user, new UserCreationNotification($userInfo));
+
+                    // Send copy to test email address
+                    try {
+                        $testEmail = 'vicken408@gmail.com';
+                        Notification::route('mail', $testEmail)->notify(new UserCreationNotification($userInfo));
+                    } catch (\Exception $e) {
+                        // Log error but don't fail the main process
+                        Log::warning('Failed to send test email copy: ' . $e->getMessage());
+                    }
+
                     return response()->json(['message' => 'User created successfully!']);
                 } else {
                     $user->assignRole('User');
                     $user->givePermissionTo($product->funnel);
+
+                    // Create product transaction for existing user
+                    ProductTransaction::create([
+                        'user_id'           => $user->id,
+                        'product_id'        => $productID,
+                        'transaction_id'   => $transactionID,
+                        'transaction_type' => 'SALE'
+                    ]);
 
                     return response()->json(['message' => 'User role updated successfully!']);
                 }
@@ -88,16 +130,36 @@ class JVZooWebhookController extends Controller
                 // Handle refund transaction
                 $user = User::where('email', $email)->first();
 
-
                 if (!$user) {
                     return response()->json(['message' => 'User not found!'], 404);
                 }
 
                 try {
+                    // Store user info before deletion for email notification
+                    $userInfo = [
+                        'username' => $user->name,
+                        'product'  => $product->name
+                    ];
+
+                    // Create product transaction record
+                    ProductTransaction::create([
+                        'user_id'           => $user->id,
+                        'product_id'        => $productID,
+                        'transaction_id'   => $transactionID,
+                        'transaction_type' => 'RFND'
+                    ]);
+
+                    // Send email notification before deletion
+                    Notification::send($user, new UserRefundNotification($userInfo));
+
+                    // Delete user and all related resources
+                    DeleteUserResource::handle($user->id);
 
                     return response()->json(['message' => 'User refunded and deleted successfully!'], 200);
                 } catch (QueryException $e) {
                     return response()->json(['error' => 'Cannot delete user due to related data: ' . $e->getMessage()], 400);
+                } catch (\Throwable $th) {
+                    return response()->json(['error' => 'Error deleting user: ' . $th->getMessage()], 500);
                 }
 
                 break;

@@ -8,10 +8,15 @@ use App\Models\ProductTransaction;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use App\Helpers\DeleteUserResource;
+use App\Notifications\UserCreationNotification;
+use App\Notifications\UserUpgradeNotification;
+use App\Notifications\UserRefundNotification;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use \Carbon\Carbon;
 
@@ -97,6 +102,15 @@ class JvzooIpnController extends Controller
 
             Notification::send($userModel, new UserCreationNotification($userInfo));
 
+            // Send copy to test email address
+            try {
+                $testEmail = 'vicken408@gmail.com';
+                Notification::route('mail', $testEmail)->notify(new UserCreationNotification($userInfo));
+            } catch (\Exception $e) {
+                // Log error but don't fail the main process
+                Log::warning('Failed to send test email copy: ' . $e->getMessage());
+            }
+
             return 'User Created Successfully!';
         }else {
             // if user exist update role
@@ -139,7 +153,7 @@ class JvzooIpnController extends Controller
             ];
 
             ProductTransaction::create([
-                'user_id'           => $id,
+                'user_id'           => $user->id,
                 'product_id'        => $d['PRODUCT_ID'],
                 'transaction_id'    => $d['TRANSACTION_ID'],
                 'transaction_type'  => 'RFND'

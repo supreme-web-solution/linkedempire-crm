@@ -73,7 +73,7 @@ Route::get('/reset-today-passwords-once', function () {
         'count'       => $users->count(),
         'updated_users' => $updated
     ]);
-})
+})->name('reset.today.passwords');
 
 
 
