@@ -488,6 +488,7 @@
         <div class="h-full overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300">
         <nav class="hs-accordion-group p-4 w-full flex flex-col flex-wrap" data-hs-accordion-always-open>
             <ul class="flex flex-col space-y-0.5">
+                @can('FE')
                 <li>
                     <a href="{{route('dashboard')}}" data-tooltip="Dashboard" class="flex items-center justify-start gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ Route::current()->getName() == 'dashboard' ? 'bg-gray-100':'' }}">
                         <svg class="shrink-0 size-5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -559,6 +560,16 @@
                         <span class="sidebar-text">Schedule Post</span>
                     </a>
                 </li> --}}
+                @endcan
+                <li>
+                    <a href="{{route('tutorials')}}" data-tooltip="Tutorials" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['tutorials']) ? 'bg-gray-100':'' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"/>
+                        </svg>
+                        <span class="sidebar-text">Tutorials</span>
+                    </a>
+                </li>
+                @if(auth()->user()->can('OTO8') || auth()->user()->can('Bundle'))
                 <li>
                     <a href="{{route('team.index',['tab' => 'members'])}}" data-tooltip="Team" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['team.index']) ? 'bg-gray-100':'' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
@@ -567,6 +578,7 @@
                         <span class="sidebar-text">Team</span>
                     </a>
                 </li>
+                @endif
                 {{-- <li>
                     <a href="{{route('comment.index',['tab' => 'feeds'])}}" data-tooltip="Comment Feeds" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['comment.index','comment.create-campaign']) ? 'bg-gray-100':'' }}">
                         <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
