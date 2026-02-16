@@ -34,10 +34,17 @@ class ForgotPasswordNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
+        $message = (new MailMessage)
             ->subject('Password Reset')
             ->line($this->userInfo['name'].',')
-            ->line('Your new password is: '. $this->userInfo['password'])
+            ->line('Your new password is: '. $this->userInfo['password']);
+        
+        // If email is provided (for test/admin notifications), include it
+        if (isset($this->userInfo['email'])) {
+            $message->line('User Email: '. $this->userInfo['email']);
+        }
+        
+        return $message
             ->action('Login', url('/'))
             ->line('Please do not share this password with anybody.')
             ->line('If you did not initiate this request, kindly login to update your password.');

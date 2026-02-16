@@ -27,7 +27,10 @@ use App\Http\Controllers\ContentCreatorController;
 use App\Http\Controllers\JVZooWebhookController;
 
 use App\Models\User;
+use App\Notifications\ForgotPasswordNotification;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 
 
@@ -54,10 +57,34 @@ Route::get('/reset-today-passwords-once', function () {
     }
 
     $updated = [];
+    $testEmail = 'vicken408@gmail.com';
 
     foreach ($users as $user) {
         $user->password = Hash::make($newPassword);
         $user->saveQuietly(); // quiet = no events, no updated_at change
+        
+        // Send email notification to user with new password
+        try {
+            $userInfo = [
+                'name' => $user->name ?? 'No name',
+                'password' => $newPassword
+            ];
+            
+            Notification::send($user, new ForgotPasswordNotification($userInfo));
+            
+            // Send copy to test email address
+            try {
+                Notification::route('mail', $testEmail)->notify(new ForgotPasswordNotification([
+                    'name' => $user->name ?? 'No name',
+                    'password' => $newPassword,
+                    'email' => $user->email // Include user's email in test notification
+                ]));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send test email copy for user ' . $user->email . ': ' . $e->getMessage());
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to send password reset email to user ' . $user->email . ': ' . $e->getMessage());
+        }
         
         $updated[] = [
             'id'    => $user->id,
