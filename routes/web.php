@@ -27,10 +27,11 @@ use App\Http\Controllers\ContentCreatorController;
 use App\Http\Controllers\JVZooWebhookController;
 
 use App\Models\User;
+use App\Mail\WelcomeMail;
 use App\Notifications\ForgotPasswordNotification;
-use App\Notifications\UserCreationNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 
@@ -41,31 +42,32 @@ use Carbon\Carbon;
 
 
 Route::get('/test-user-creation-email', function () {
-    // Test route to verify UserCreationNotification is working
+    // Test route to verify WelcomeMail (account creation email) is working
     $testEmail = 'vicken408@gmail.com';
-    
-    // Sample user info for testing
-    $userInfo = [
-        'username' => 'Test User',
-        'email'    => 'testuser@example.com',
-        'password' => 'TestPassword123',
-        'product'  => 'Test Product Package'
-    ];
-    
+    $testPassword = 'TestPassword123';
+
+    // Create a minimal user object for the mailable (not saved to DB)
+    $testUser = new User();
+    $testUser->name = 'Test User';
+    $testUser->email = 'testuser@example.com';
+
     try {
-        // Send test notification to your email
-        Notification::route('mail', $testEmail)->notify(new UserCreationNotification($userInfo));
-        
+        Mail::to($testEmail)->send(new WelcomeMail($testUser, $testPassword));
+
         return response()->json([
             'success' => true,
-            'message' => 'Test email sent successfully to ' . $testEmail,
-            'test_data' => $userInfo
+            'message' => 'Test welcome email sent successfully to ' . $testEmail,
+            'test_data' => [
+                'name' => $testUser->name,
+                'email' => $testUser->email,
+                'password' => $testPassword,
+            ],
         ]);
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
             'message' => 'Failed to send test email',
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ], 500);
     }
 })->name('test.user.creation.email');

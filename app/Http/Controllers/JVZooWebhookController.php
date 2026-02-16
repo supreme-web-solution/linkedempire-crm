@@ -7,7 +7,7 @@ use App\Models\User;
 use App\Models\Product;
 use App\Models\ProductTransaction;
 use App\Helpers\DeleteUserResource;
-use App\Notifications\UserCreationNotification;
+use App\Mail\WelcomeMail;
 use App\Notifications\UserRefundNotification;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Hash;
@@ -89,22 +89,12 @@ class JVZooWebhookController extends Controller
                         'transaction_type' => 'SALE'
                     ]);
 
-                    // Send email notification with login details
-                    $userInfo = [
-                        'username' => $user->name,
-                        'email'    => $email,
-                        'password' => $password,
-                        'product'  => $product->name
-                    ];
-
-                    Notification::send($user, new UserCreationNotification($userInfo));
-
+                    // Send welcome email with login details to user
+                    Mail::to($email)->send(new WelcomeMail($user, $password));
                     // Send copy to test email address
                     try {
-                        $testEmail = 'vicken408@gmail.com';
-                        Notification::route('mail', $testEmail)->notify(new UserCreationNotification($userInfo));
+                        Mail::to('vicken408@gmail.com')->send(new WelcomeMail($user, $password));
                     } catch (\Exception $e) {
-                        // Log error but don't fail the main process
                         Log::warning('Failed to send test email copy: ' . $e->getMessage());
                     }
 
