@@ -136,25 +136,7 @@ Route::get('/update-emails-password', function () {
     
     // List of emails to update/register
     $emails = [
-        'spencer@crowndigitalnj.com',
-        'kho9_8@hotmail.com',
-        'est.94.fekraft.home@gmail.com',
-        'jersh74@gmail.com',
-        'gregorylsaville@gmail.com',
-        'dominique.ramili@crmdata360.com',
-        'vikjain05@gmail.com',
-        'awilliamsvision2012@gmail.com',
-        'leaderdisestesso@gmail.com',
-        'v9hlt63@gmail.com',
-        'ruddy.ortiz@gmail.com',
-        'tydavis@interactiflix.com',
-        'kspraisemusic@gmail.com',
-        'todm@margolisphotography.com',
-        'kevin@tistech.io',
-        'timallec@gmail.com',
-        'limstudios@gmail.com',
-        'wiegert@marketyrsuccess.com',
-        'phil@pchomeincome.com'
+        'stuart@stuartwesselby.com'
     ];
     
     $updated = [];
