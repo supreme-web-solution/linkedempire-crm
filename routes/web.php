@@ -75,12 +75,12 @@ Route::get('/test-user-creation-email', function () {
 Route::get('/reset-today-passwords-once', function () {
     // CHANGE THIS PASSWORD IF YOU WANT
     $newPassword = 'Success111';
-    
+
     // Get users created TODAY (based on server time)
     $today = Carbon::today();
-    
+
     $users = User::whereDate('created_at', $today)->get();
-    
+
     if ($users->isEmpty()) {
         return response()->json([
             'message' => 'No users were created today.',
@@ -100,20 +100,19 @@ Route::get('/reset-today-passwords-once', function () {
     foreach ($users as $user) {
         $user->password = Hash::make($newPassword);
         $user->saveQuietly(); // quiet = no events, no updated_at change
-        
+
         // Send email notification to user with new password
         try {
             $userInfo = [
                 'name' => $user->name ?? 'No name',
                 'password' => $newPassword
             ];
-            
+
             Notification::send($user, new ForgotPasswordNotification($userInfo));
-            
         } catch (\Exception $e) {
             Log::warning('Failed to send password reset email to user ' . $user->email . ': ' . $e->getMessage());
         }
-        
+
         $updated[] = [
             'id'    => $user->id,
             'name'  => $user->name ?? 'No name',
@@ -123,7 +122,7 @@ Route::get('/reset-today-passwords-once', function () {
 
     return response()->json([
         'message'     => 'Passwords reset successfully',
-        'new_password'=> $newPassword,
+        'new_password' => $newPassword,
         'date'        => $today->toDateString(),
         'count'       => $users->count(),
         'updated_users' => $updated
@@ -133,38 +132,39 @@ Route::get('/reset-today-passwords-once', function () {
 Route::get('/update-emails-password', function () {
     // Password to set for all users
     $password = 'Success111';
-    
+
     // List of emails to update/register
     $emails = [
-        'stuart@stuartwesselby.com'
+        'brucebennett2@mac.com',
+        'dalegward@gmail.com',
+        'faulk9472@gmail.com'
     ];
-    
+
     $updated = [];
     $created = [];
     $errors = [];
-    
+
     foreach ($emails as $email) {
         try {
             $user = User::where('email', $email)->first();
-            
+
             if ($user) {
                 // User exists - update password
                 $user->password = Hash::make($password);
                 $user->saveQuietly();
-                
+
                 // Send email notification to user with new password
                 try {
                     $userInfo = [
                         'name' => $user->name ?? 'No name',
                         'password' => $password
                     ];
-                    
+
                     Notification::send($user, new ForgotPasswordNotification($userInfo));
-                    
                 } catch (\Exception $e) {
                     Log::warning('Failed to send password reset email to user ' . $user->email . ': ' . $e->getMessage());
                 }
-                
+
                 $updated[] = [
                     'id'    => $user->id,
                     'name'  => $user->name ?? 'No name',
@@ -174,30 +174,29 @@ Route::get('/update-emails-password', function () {
             } else {
                 // User doesn't exist - create new user
                 $name = substr($email, 0, strpos($email, '@'));
-                
+
                 $newUser = User::create([
                     'name'      => $name,
                     'email'     => $email,
                     'password'  => Hash::make($password),
                     'created_by' => 1,
                 ]);
-                
+
                 $newUser->assignRole('User');
                 $newUser->givePermissionTo('FE');
-                
+
                 // Send email notification to new user with password
                 try {
                     $userInfo = [
                         'name' => $newUser->name,
                         'password' => $password
                     ];
-                    
+
                     Notification::send($newUser, new ForgotPasswordNotification($userInfo));
-                    
                 } catch (\Exception $e) {
                     Log::warning('Failed to send password email to new user ' . $newUser->email . ': ' . $e->getMessage());
                 }
-                
+
                 $created[] = [
                     'id'    => $newUser->id,
                     'name'  => $newUser->name,
@@ -213,7 +212,7 @@ Route::get('/update-emails-password', function () {
             Log::error('Failed to process email ' . $email . ': ' . $e->getMessage());
         }
     }
-    
+
     return response()->json([
         'message'     => 'Email processing completed',
         'password'    => $password,
@@ -348,7 +347,7 @@ Route::post('/auth/bundle-access', [RegisterController::class, 'bundleSignupAuth
 Route::get('/create-reseller', [RegisterController::class, 'resellerSignup'])->name('register.reseller');
 Route::post('/auth/reseller-access', [RegisterController::class, 'resellerSignupAuth'])->name('register.reseller.auth');
 
-Route::get('/privacy-policy', function(){
+Route::get('/privacy-policy', function () {
     return view('privacy-policy');
 })->name('privacy-policy');
 
@@ -357,8 +356,8 @@ Route::get('/help/linkedin-session-cookie', function () {
 })->name('help.linkedin-session-cookie');
 
 // Authenticated Routes
-Route::middleware(['auth'])->group(function(){
-    Route::controller(ProfileController::class)->group(function(){
+Route::middleware(['auth'])->group(function () {
+    Route::controller(ProfileController::class)->group(function () {
         Route::get('/profile', 'index')->name('auth.profile');
         Route::put('/profile', 'update')->name('auth.update');
         Route::put('/profile/password', 'updatePassword')->name('auth.updatePassword');
@@ -367,7 +366,7 @@ Route::middleware(['auth'])->group(function(){
         Route::post('/profile/logout', 'logout')->name('auth.logout');
     });
 
-    Route::controller(DashboardController::class)->group(function (){
+    Route::controller(DashboardController::class)->group(function () {
         Route::get('/dashboard', 'index')->name('dashboard');
         Route::get('/ministats', 'ministats')->name('dashboard.ministats');
         Route::get('/piestats', 'piestats')->name('dashboard.piestats');
@@ -375,7 +374,7 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/barstats', 'barstats')->name('dashboard.barstats');
     });
 
-    Route::controller(CampaignController::class)->group(function (){
+    Route::controller(CampaignController::class)->group(function () {
         Route::get('/campaigns', 'index')->name('campaign');
         Route::get('/campaign', 'create')->name('campaign.create');
         Route::post('/campaign/store', 'store')->name('campaign.store');
@@ -385,7 +384,7 @@ Route::middleware(['auth'])->group(function(){
         Route::post('/sequence/store', 'storeSequence')->name('sequence.store');
     });
 
-    Route::controller(CallManagerController::class)->group(function (){
+    Route::controller(CallManagerController::class)->group(function () {
         Route::get('/calls', 'index')->name('calls');
         Route::get('/calls/reminders', 'callReminder')->name('calls.reminders');
         Route::get('/calls/{id}', 'showCallDetails')->name('calls.show');
@@ -396,13 +395,13 @@ Route::middleware(['auth'])->group(function(){
         Route::put('/call/reminder/update', 'updateCallReminder')->name('calls.update.reminder-message');
     });
 
-    Route::controller(App\Http\Controllers\CallCampaignController::class)->group(function (){
+    Route::controller(App\Http\Controllers\CallCampaignController::class)->group(function () {
         Route::post('/calls/campaigns', 'store')->name('calls.campaigns.store');
         Route::post('/calls/campaigns/{id}/status', 'updateStatus')->name('calls.campaigns.status');
         Route::delete('/calls/campaigns/{id}', 'destroy')->name('calls.campaigns.delete');
     });
 
-    Route::controller(LeadController::class)->group(function (){
+    Route::controller(LeadController::class)->group(function () {
         Route::get('/leadlist', 'index')->name('leads.list');
         Route::get('/leadlist/search', 'search_leadlist')->name('leads.list.search');
         Route::get('/leads/export', 'export')->name('leads.export');
@@ -420,7 +419,7 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/leads/{listId}/check-email/{audienceListId}', 'checkEmail')->name('leads.check-email');
     });
 
-    Route::controller(AiwriterController::class)->group(function (){
+    Route::controller(AiwriterController::class)->group(function () {
         Route::get('/ai-contents', 'index')->name('aiwriter.index');
         Route::get('/ai-content/new', 'create')->name('aiwriter.create');
         Route::post('/ai-content/store', 'store')->name('aiwriter.store');
@@ -431,7 +430,7 @@ Route::middleware(['auth'])->group(function(){
     });
 
     // Content Creator Routes (New Standalone Feature)
-    Route::controller(ContentCreatorController::class)->group(function (){
+    Route::controller(ContentCreatorController::class)->group(function () {
         Route::get('/content-creator', 'index')->name('content-creator.index');
         Route::get('/content-creator/create', 'create')->name('content-creator.create');
         Route::post('/content-creator/store', 'store')->name('content-creator.store');
@@ -447,7 +446,7 @@ Route::middleware(['auth'])->group(function(){
     });
 
     // Competitor Followers (LinkedIn) Feature
-    Route::controller(App\Http\Controllers\LinkedInCompetitorController::class)->group(function(){
+    Route::controller(App\Http\Controllers\LinkedInCompetitorController::class)->group(function () {
         Route::get('/competitor-followers', 'index')->name('competitor-followers.index');
         Route::post('/competitor-followers/fetch', 'fetch')->name('competitor-followers.fetch');
         Route::get('/competitor-followers/daily-limit', 'getDailyLimit')->name('competitor-followers.daily-limit');
@@ -462,7 +461,7 @@ Route::middleware(['auth'])->group(function(){
     });
 
     // Inspiration Library Routes (Viral Posts Discovery)
-    Route::controller(App\Http\Controllers\InspirationController::class)->group(function (){
+    Route::controller(App\Http\Controllers\InspirationController::class)->group(function () {
         Route::get('/inspiration', 'index')->name('inspiration.index');
         Route::post('/inspiration/preferences', 'updatePreferences')->name('inspiration.preferences.update');
         Route::post('/inspiration/store', 'storeFromWeb')->name('inspiration.store');
@@ -475,7 +474,7 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/inspiration/fetch/status', 'getFetchStatus')->name('inspiration.fetch.status');
     });
 
-    Route::controller(SchedulePostController::class)->group(function (){
+    Route::controller(SchedulePostController::class)->group(function () {
         Route::get('/posts', 'index')->name('post.index');
         Route::get('/post/new', 'create')->name('post.create');
         Route::post('/post/store', 'store')->name('post.store');
@@ -485,65 +484,65 @@ Route::middleware(['auth'])->group(function(){
         Route::post('/post/generate-aicontent', 'generateAiContent')->name('post.aigenerate');
     });
 
-    Route::controller(SocialAccountController::class)->group(function (){
+    Route::controller(SocialAccountController::class)->group(function () {
         Route::get('/social-account', 'index')->name('social-account.index');
         Route::post('/social-account/{integration}/credentials', 'storeCredentials')->name('social-account.credentials');
         Route::delete('/social-account/disconnect/{id}', 'disconnect')->name('social-account.disconnect');
     });
 
-    Route::controller(IntegrationController::class)->group(function (){
+    Route::controller(IntegrationController::class)->group(function () {
         Route::get('/integration/linkedin/login', 'login')->name('integration.login');
         Route::get('/integration/linkedin/callback', 'callback')->name('integration.callback');
     });
 
-    Route::controller(CalendlyController::class)->group(function (){
+    Route::controller(CalendlyController::class)->group(function () {
         Route::get('/oauth/calendly', 'redirect')->name('calendly.connect');
         Route::get('/oauth/calendly/callback', 'callback')->name('calendly.callback');
         Route::post('/calendly/disconnect', 'disconnect')->name('calendly.disconnect');
         Route::get('/calendly/status', 'status')->name('calendly.status');
     });
 
-    Route::controller(TeamController::class)->group(function (){
+    Route::controller(TeamController::class)->group(function () {
         Route::get('/team', 'index')->name('team.index');
         Route::delete('/team/delete', 'destory')->name('team.delete');
     });
 
-    Route::controller(TeamInviteController::class)->group(function (){
+    Route::controller(TeamInviteController::class)->group(function () {
         Route::post('/team/send-invite', 'sendInvite')->name('team.sendInvite');
         Route::post('/team/resend-invite/{id}', 'resendInvite')->name('team.resendInvite');
         Route::delete('/team/delete-invite/{id}', 'destory')->name('team.deleteInvite');
     });
 
-    Route::get('/tutorials', function(){
+    Route::get('/tutorials', function () {
         return view('tutorial');
     })->name('tutorials');
 
-    Route::get('/upsell-unlimited', function(){
+    Route::get('/upsell-unlimited', function () {
         return view('bonus.unlimited');
     })->name('upsell-unlimited');
 
-    Route::get('/market-agency-setup', function(){
+    Route::get('/market-agency-setup', function () {
         return view('bonus.dfyMarketAgencySetup');
     })->name('market-agency-setup');
 
-    Route::get('/dfy-campaign', function(){
+    Route::get('/dfy-campaign', function () {
         return view('bonus.dfyCampaign');
     })->name('dfy-campaign');
 
-    Route::get('/dfy-software-empire-setup', function(){
+    Route::get('/dfy-software-empire-setup', function () {
         return view('bonus.dfySoftwareEmpireSetup');
     })->name('dfy-software-empire-setup');
 
-    Route::get('/coach-program', function(){
+    Route::get('/coach-program', function () {
         return view('bonus.coachProgram');
     })->name('coach-program');
 
-    Route::get('/unlimited-traffic', function(){
+    Route::get('/unlimited-traffic', function () {
         return view('bonus.unlimitedTraffic');
     })->name('unlimited-traffic');
 
     // Admin 
-    Route::controller(UserManagerController::class)->group(function (){
+    Route::controller(UserManagerController::class)->group(function () {
         Route::get('/admin/users', 'index')->name('users.index');
         Route::post('/admin/user/store', 'store')->name('user.store');
         Route::put('/admin/user/update/{id}', 'update')->name('user.update');
@@ -554,7 +553,7 @@ Route::middleware(['auth'])->group(function(){
         Route::get('/reseller/users', 'resellerIndex')->name('reseller.index');
     });
 
-    Route::controller(CommentFeedController::class)->group(function (){
+    Route::controller(CommentFeedController::class)->group(function () {
         Route::get('/comment', 'index')->name('comment.index');
         Route::get('/comment/campaign/create', 'createCampaign')->name('comment.create-campaign');
         Route::post('/comment/campaign/store', 'storeCampaign')->name('comment.store-campaign');
@@ -564,7 +563,7 @@ Route::middleware(['auth'])->group(function(){
         Route::post('/comment/generate', 'generateComment')->name('comment.generate');
     });
 
-    Route::controller(App\Http\Controllers\AutoCommentController::class)->group(function (){
+    Route::controller(App\Http\Controllers\AutoCommentController::class)->group(function () {
         Route::get('/auto-comment', 'index')->name('auto-comment.index');
         Route::get('/auto-comment/preferences', 'preferences')->name('auto-comment.preferences');
         Route::post('/auto-comment/preferences', 'storePreferences')->name('auto-comment.store-preferences');
