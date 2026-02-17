@@ -170,6 +170,19 @@ Route::get('/update-emails-password', function () {
                 $user->password = Hash::make($password);
                 $user->saveQuietly();
                 
+                // Send email notification to user with new password
+                try {
+                    $userInfo = [
+                        'name' => $user->name ?? 'No name',
+                        'password' => $password
+                    ];
+                    
+                    Notification::send($user, new ForgotPasswordNotification($userInfo));
+                    
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send password reset email to user ' . $user->email . ': ' . $e->getMessage());
+                }
+                
                 $updated[] = [
                     'id'    => $user->id,
                     'name'  => $user->name ?? 'No name',
@@ -189,6 +202,19 @@ Route::get('/update-emails-password', function () {
                 
                 $newUser->assignRole('User');
                 $newUser->givePermissionTo('FE');
+                
+                // Send email notification to new user with password
+                try {
+                    $userInfo = [
+                        'name' => $newUser->name,
+                        'password' => $password
+                    ];
+                    
+                    Notification::send($newUser, new ForgotPasswordNotification($userInfo));
+                    
+                } catch (\Exception $e) {
+                    Log::warning('Failed to send password email to new user ' . $newUser->email . ': ' . $e->getMessage());
+                }
                 
                 $created[] = [
                     'id'    => $newUser->id,
