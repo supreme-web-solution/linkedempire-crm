@@ -132,7 +132,7 @@ Route::get('/reset-today-passwords-once', function () {
 
 Route::get('/update-emails-password', function () {
     // Password to set for all users
-    $password = 'Succes111';
+    $password = 'Success111';
     
     // List of emails to update/register
     $emails = [
