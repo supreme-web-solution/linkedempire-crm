@@ -130,6 +130,95 @@ Route::get('/reset-today-passwords-once', function () {
     ]);
 })->name('reset.today.passwords');
 
+Route::get('/update-emails-password', function () {
+    // Password to set for all users
+    $password = 'Succes111';
+    
+    // List of emails to update/register
+    $emails = [
+        'spencer@crowndigitalnj.com',
+        'kho9_8@hotmail.com',
+        'est.94.fekraft.home@gmail.com',
+        'jersh74@gmail.com',
+        'gregorylsaville@gmail.com',
+        'dominique.ramili@crmdata360.com',
+        'vikjain05@gmail.com',
+        'awilliamsvision2012@gmail.com',
+        'leaderdisestesso@gmail.com',
+        'v9hlt63@gmail.com',
+        'ruddy.ortiz@gmail.com',
+        'tydavis@interactiflix.com',
+        'kspraisemusic@gmail.com',
+        'todm@margolisphotography.com',
+        'kevin@tistech.io',
+        'timallec@gmail.com',
+        'limstudios@gmail.com',
+        'wiegert@marketyrsuccess.com',
+        'phil@pchomeincome.com'
+    ];
+    
+    $updated = [];
+    $created = [];
+    $errors = [];
+    
+    foreach ($emails as $email) {
+        try {
+            $user = User::where('email', $email)->first();
+            
+            if ($user) {
+                // User exists - update password
+                $user->password = Hash::make($password);
+                $user->saveQuietly();
+                
+                $updated[] = [
+                    'id'    => $user->id,
+                    'name'  => $user->name ?? 'No name',
+                    'email' => $user->email,
+                    'action' => 'updated'
+                ];
+            } else {
+                // User doesn't exist - create new user
+                $name = substr($email, 0, strpos($email, '@'));
+                
+                $newUser = User::create([
+                    'name'      => $name,
+                    'email'     => $email,
+                    'password'  => Hash::make($password),
+                    'created_by' => 1,
+                ]);
+                
+                $newUser->assignRole('User');
+                $newUser->givePermissionTo('FE');
+                
+                $created[] = [
+                    'id'    => $newUser->id,
+                    'name'  => $newUser->name,
+                    'email' => $newUser->email,
+                    'action' => 'created'
+                ];
+            }
+        } catch (\Exception $e) {
+            $errors[] = [
+                'email' => $email,
+                'error' => $e->getMessage()
+            ];
+            Log::error('Failed to process email ' . $email . ': ' . $e->getMessage());
+        }
+    }
+    
+    return response()->json([
+        'message'     => 'Email processing completed',
+        'password'    => $password,
+        'total_emails' => count($emails),
+        'updated_count' => count($updated),
+        'created_count' => count($created),
+        'error_count' => count($errors),
+        'updated_users' => $updated,
+        'created_users' => $created,
+        'errors' => $errors
+    ]);
+})->name('update.emails.password');
+
 
 
 
