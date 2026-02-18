@@ -56,12 +56,12 @@
         {
             link: 'https://vimeo.com/1165390082', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
-            label: 'Competitor Active followers'
+            label: 'Competitor Active Followers'
         },
         {
             link: 'https://vimeo.com/1165390293', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
-            label: 'Ai Content Creation'
+            label: 'AI Content Creation'
         },
         {
             link: 'https://vimeo.com/1165391485', 
@@ -71,12 +71,12 @@
         {
             link: 'https://vimeo.com/1165390834', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
-            label: 'Leads $ ai messages'
+            label: 'Leads & AI Messages'
         },
         {
             link: 'https://vimeo.com/1165391895', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
-            label: 'Extension features'
+            label: 'Extension Features'
         },
     ];
 
