@@ -41,13 +41,10 @@
 <body class="antialiased">
     <div class="bg-gray-100 min-h-screen flex flex-col py-10">
         <div class="w-full px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
-            <div class="flex flex-col items-center mb-6">
-                <div class="flex justify-center">
-                    <x-app-logo/>
-                </div>
-                <p class="text-sm text-gray-600 mt-2 font-medium">A platform for building something big on LinkedIn</p>
-            </div>
-            <div class="w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            @hasSection('header-message')
+                @yield('header-message')
+            @endif
+            <div class="w-full">
                 @yield('content')
             </div>
         </div>

@@ -6,23 +6,43 @@
         'site_name' => config('app.name'),
         'favicon' => asset('images/logo-1.png'),
     ])
+@section('header-message')
+<div class="w-full max-w-4xl mx-auto mb-4">
+    <div class="bg-white border border-gray-200 rounded-lg p-4 sm:p-5 shadow-sm">
+        <div class="text-center space-y-2">
+            <p class="text-lg font-semibold text-gray-900">Hey there,</p>
+            <p class="text-sm text-gray-700">Thank you for your patronage. You have made a great decision, as this app is designed to deliver results.</p>
+            
+            <div class="mt-3 mx-auto max-w-xl">
+                <div class="bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 border-2 border-yellow-400 rounded-lg p-3 shadow-sm">
+                    <div class="flex items-center justify-center gap-2 mb-1">
+                        <svg class="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <p class="text-sm font-bold text-yellow-900">IMPORTANT NOTICE</p>
+                    </div>
+                    <p class="text-xs text-gray-800">Please create your Full Bundle Option account using your preferred details below.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+
 @section('content')
+<div class="w-full max-w-5xl mx-auto">
 <div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-0 min-h-[420px] rounded-xl overflow-hidden border border-gray-200 shadow-lg bg-white">
-    <!-- Left: Message (full-width column) -->
-    <div class="p-6 sm:p-8 lg:p-10 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-b lg:border-b-0 lg:border-r border-blue-200/60 order-2 lg:order-1 flex flex-col justify-center relative overflow-hidden">
+    <!-- Left: Logo (full-width column) -->
+    <div class="p-6 sm:p-8 lg:p-10 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-b lg:border-b-0 lg:border-r border-blue-200/60 order-2 lg:order-1 flex flex-col justify-center items-center relative overflow-hidden">
         <!-- Decorative background elements -->
         <div class="absolute top-0 right-0 w-32 h-32 bg-blue-100/30 rounded-full blur-3xl"></div>
         <div class="absolute bottom-0 left-0 w-24 h-24 bg-indigo-100/30 rounded-full blur-2xl"></div>
         
-        <div class="relative z-10">
-            <p class="text-xl font-semibold text-gray-900 mb-3">Hey there,</p>
-            <p class="text-base text-gray-700 mb-3 leading-relaxed">Thank you for your patronage.</p>
-            <p class="text-base text-gray-700 mb-6 leading-relaxed">You have made a great decision, as this app is designed to deliver results.</p>
-            
-            <div class="p-4 bg-gradient-to-r from-yellow-50 to-amber-50 border-l-4 border-yellow-500 rounded-lg shadow-sm">
-                <p class="text-sm font-bold text-yellow-900 mb-2">**IMPORTANT NOTICE!!!**</p>
-                <p class="text-sm text-gray-800 leading-relaxed">Please create your Full Bundle Option account using your preferred details below.</p>
+        <div class="relative z-10 flex flex-col items-center">
+            <div class="flex justify-center mb-4">
+                <x-app-logo/>
             </div>
+            <p class="text-sm text-gray-600 font-medium text-center">A platform for building something big on LinkedIn</p>
         </div>
     </div>
 
@@ -103,6 +123,7 @@
         <!-- End Form -->
         </div>
     </div>
+</div>
 </div>
 
 <script>
