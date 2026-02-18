@@ -51,7 +51,7 @@
         {
             link: 'https://vimeo.com/1165389320', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
-            label: 'Connection flow'
+            label: 'IMPORTANT: Watch This First to Get Started the Right Way'
         },
         {
             link: 'https://vimeo.com/1165390082', 
@@ -87,7 +87,7 @@
             <a class="fancy-box" href="${item.link}">
                 <img src="${item.thumbnail}" alt="${item.label}">
             </a>
-            <p class="font-medium mt-4 pl-2 pb-2">${item.label}</p>
+            <p class="font-medium mt-4 pl-2 pb-2 whitespace-wrap">${item.label}</p>
         </div>
         `;
         $('.tutorials-card').append(display)

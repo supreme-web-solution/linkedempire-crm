@@ -495,6 +495,16 @@
                         <span class="sidebar-text">Dashboard</span>
                     </a>
                 </li>
+                @endcan
+                <li>
+                    <a href="{{route('tutorials')}}" data-tooltip="Tutorials" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['tutorials']) ? 'bg-gray-100':'' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"/>
+                        </svg>
+                        <span class="sidebar-text">Tutorials</span>
+                    </a>
+                </li>
+                @can('FE')
                 <li>
                     <a href="{{ route('competitor-followers.index') }}" data-tooltip="{{ __('competitor_followers.title') }}" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['competitor-followers.index','competitor-followers.show']) ? 'bg-gray-100':'' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
@@ -562,14 +572,7 @@
                     </a>
                 </li> --}}
                 @endcan
-                <li>
-                    <a href="{{route('tutorials')}}" data-tooltip="Tutorials" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['tutorials']) ? 'bg-gray-100':'' }}">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"/>
-                        </svg>
-                        <span class="sidebar-text">Tutorials</span>
-                    </a>
-                </li>
+                
                 @if(auth()->user()->can('OTO8') || auth()->user()->can('Bundle'))
                 <li>
                     <a href="{{route('team.index',['tab' => 'members'])}}" data-tooltip="Team" class="w-full flex items-center gap-x-3.5 py-2 px-2.5 text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-hidden focus:bg-gray-100 {{ in_array(Route::current()->getName(), ['team.index']) ? 'bg-gray-100':'' }}">
