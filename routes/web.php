@@ -344,6 +344,12 @@ Route::post('/team/register', [TeamInviteController::class, 'acceptInvite'])->na
 Route::get('/auth/bundle-access', [RegisterController::class, 'bundleSignup'])->name('register.bundle');
 Route::post('/auth/bundle-access', [RegisterController::class, 'bundleSignupAuth'])->name('register.bundle.auth');
 
+Route::get('/auth/fe', [RegisterController::class, 'feSignup'])->name('register.fe');
+Route::post('/auth/fe', [RegisterController::class, 'feSignupAuth'])->name('register.fe.auth');
+
+Route::get('/auth/bundle', [RegisterController::class, 'bundleSignupNew'])->name('register.bundle.new');
+Route::post('/auth/bundle', [RegisterController::class, 'bundleSignupAuthNew'])->name('register.bundle.auth.new');
+
 Route::get('/create-reseller', [RegisterController::class, 'resellerSignup'])->name('register.reseller');
 Route::post('/auth/reseller-access', [RegisterController::class, 'resellerSignupAuth'])->name('register.reseller.auth');
 
