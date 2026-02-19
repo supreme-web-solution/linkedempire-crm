@@ -123,7 +123,7 @@
                                 @csrf
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">LinkedIn Session Cookie (li_at) <span class="text-red-500">*</span></label>
-                                    <textarea name="linkedin_session_cookie" id="linkedin_session_cookie" rows="2" required class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="li_at=...">{{ old('linkedin_session_cookie') ?? $maskedCookie }}</textarea>
+                                    <textarea name="linkedin_session_cookie" id="linkedin_session_cookie" rows="2" required class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="AQR12hN*********">{{ old('linkedin_session_cookie') ?? $maskedCookie }}</textarea>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Browser User Agent <span class="text-red-500">*</span></label>
