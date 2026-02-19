@@ -137,6 +137,7 @@
                                     <button type="submit" class="inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold text-white transition-all focus:outline-none focus:ring-2 focus:ring-[#0077b5]" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';">
                                         Save session
                                     </button>
+                                    
                                     @if($account->linkedin_session_verified_at)
                                         <span class="text-xs text-gray-500">Stored securely & encrypted.</span>
                                     @endif
