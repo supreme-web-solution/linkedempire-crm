@@ -29,7 +29,7 @@ class SendInvitationMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address(env('MAIL_FROM_ADDRESS'), config('app.name')),
+            from: new Address(config('mail.from.address'), config('mail.from.name', config('app.name'))),
             subject: 'Team Invitation',
         );
     }
