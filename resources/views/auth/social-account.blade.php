@@ -128,7 +128,7 @@
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Browser User Agent <span class="text-red-500">*</span></label>
                                     <textarea name="linkedin_user_agent" id="linkedin_user_agent" rows="2" required class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64)...">{{ old('linkedin_user_agent') ?? ($account->linkedin_user_agent ?? '') }}</textarea>
-                                    <p class="mt-1 text-xs text-gray-600">To get your user agent: Go to your browser and search for "my user agent", then copy the agent code shown there.</p>
+                                    <p class="mt-1 text-xs text-gray-600">To get your user agent: <a href="https://www.google.com/search?q=my+user+agent" target="_blank" rel="noopener noreferrer" class="font-bold underline text-[#0077b5] hover:text-[#005885]">Search for "my user agent"</a> and copy the agent code shown there.</p>
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     Tip: Keep the browser logged in while copying the cookie. If you log out everywhere, LinkedIn invalidates the value immediately.
