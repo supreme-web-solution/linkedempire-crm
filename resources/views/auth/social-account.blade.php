@@ -119,15 +119,16 @@
                                         . substr($account->linkedin_session_cookie, -4);
                                 }
                             @endphp
-                            <form method="POST" action="{{ route('social-account.credentials', $account->id) }}" class="space-y-3">
+                            <form method="POST" action="{{ route('social-account.credentials', $account->id) }}" class="space-y-3" id="linkedin-session-form">
                                 @csrf
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">LinkedIn Session Cookie (li_at)</label>
-                                    <textarea name="linkedin_session_cookie" rows="2" class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="li_at=...">{{ old('linkedin_session_cookie') ?? $maskedCookie }}</textarea>
+                                    <label class="block text-sm font-medium text-gray-700">LinkedIn Session Cookie (li_at) <span class="text-red-500">*</span></label>
+                                    <textarea name="linkedin_session_cookie" id="linkedin_session_cookie" rows="2" required class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="li_at=...">{{ old('linkedin_session_cookie') ?? $maskedCookie }}</textarea>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">Browser User Agent</label>
-                                    <textarea name="linkedin_user_agent" rows="2" class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64)...">{{ old('linkedin_user_agent') ?? ($account->linkedin_user_agent ?? '') }}</textarea>
+                                    <label class="block text-sm font-medium text-gray-700">Browser User Agent <span class="text-red-500">*</span></label>
+                                    <textarea name="linkedin_user_agent" id="linkedin_user_agent" rows="2" required class="mt-1 w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5] focus:border-[#0077b5]" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64)...">{{ old('linkedin_user_agent') ?? ($account->linkedin_user_agent ?? '') }}</textarea>
+                                    <p class="mt-1 text-xs text-gray-600">To get your user agent: Go to your browser and search for "my user agent", then copy the agent code shown there.</p>
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     Tip: Keep the browser logged in while copying the cookie. If you log out everywhere, LinkedIn invalidates the value immediately.
@@ -202,5 +203,40 @@
         btn.find('.linkedin-connecting').removeClass('hidden').addClass('inline-flex');
         window.location = "{{route('integration.login')}}";
     })
+
+    // Frontend validation for LinkedIn session form
+    $('#linkedin-session-form').on('submit', function(e) {
+        const sessionCookie = $('#linkedin_session_cookie').val().trim();
+        const userAgent = $('#linkedin_user_agent').val().trim();
+        
+        // Remove any existing error messages
+        $('.field-error').remove();
+        $('.border-red-500').removeClass('border-red-500');
+        
+        let hasError = false;
+        
+        if (!sessionCookie) {
+            $('#linkedin_session_cookie').addClass('border-red-500');
+            $('#linkedin_session_cookie').after('<p class="field-error text-xs text-red-500 mt-1">LinkedIn Session Cookie is required.</p>');
+            hasError = true;
+        }
+        
+        if (!userAgent) {
+            $('#linkedin_user_agent').addClass('border-red-500');
+            $('#linkedin_user_agent').after('<p class="field-error text-xs text-red-500 mt-1">Browser User Agent is required.</p>');
+            hasError = true;
+        }
+        
+        if (hasError) {
+            e.preventDefault();
+            return false;
+        }
+    });
+    
+    // Remove error styling on input
+    $('#linkedin_session_cookie, #linkedin_user_agent').on('input', function() {
+        $(this).removeClass('border-red-500');
+        $(this).siblings('.field-error').remove();
+    });
 </script>
 @endsection
