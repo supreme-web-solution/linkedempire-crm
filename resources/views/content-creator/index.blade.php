@@ -312,6 +312,10 @@
             <div class="flex items-center justify-between">
                 <div class="flex space-x-2">
                     @if($post->status === 'draft')
+                    <a href="{{ route('content-creator.edit', $post->id) }}" 
+                       class="px-3 py-1 text-white text-xs rounded-md transition-all" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)';">
+                        <i class="fas fa-edit mr-1"></i>Edit
+                    </a>
                     <button onclick="publishPost({{ $post->id }})" 
                             class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-md transition-colors">
                         Publish Now
@@ -438,6 +442,10 @@
                 <td class="px-6 py-4 text-sm font-medium">
                     <div class="flex flex-wrap gap-2">
                         @if($post->status === 'draft')
+                        <a href="{{ route('content-creator.edit', $post->id) }}" 
+                           class="px-3 py-1 text-white text-xs rounded-md transition-all whitespace-nowrap" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)';">
+                            <i class="fas fa-edit mr-1"></i>Edit
+                        </a>
                         <button onclick="publishPost({{ $post->id }})" 
                                 class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-md transition-colors whitespace-nowrap">
                             <i class="fas fa-paper-plane mr-1"></i>Publish Now

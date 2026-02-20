@@ -168,6 +168,145 @@ class ContentCreatorController extends Controller
     }
 
     /**
+     * Show the form for editing the specified post
+     */
+    public function edit($id)
+    {
+        $post = LinkedInPost::where('user_id', auth()->id())->findOrFail($id);
+        
+        // Only allow editing draft posts
+        if ($post->status !== 'draft') {
+            notify()->error('Only draft posts can be edited.');
+            return redirect()->route('content-creator.index');
+        }
+        
+        $templates = PostTemplate::active()
+            ->orderBy('engagement_score', 'desc')
+            ->limit(20)
+            ->get();
+            
+        $categories = PostTemplate::getCategories();
+        $industries = PostTemplate::getIndustries();
+        
+        return view('content-creator.edit', compact('post', 'templates', 'categories', 'industries'));
+    }
+
+    /**
+     * Update the specified post
+     */
+    public function update(Request $request, $id)
+    {
+        $post = LinkedInPost::where('user_id', auth()->id())->findOrFail($id);
+        
+        // Only allow updating draft posts
+        if ($post->status !== 'draft') {
+            notify()->error('Only draft posts can be edited.');
+            return redirect()->route('content-creator.index');
+        }
+        
+        $request->validate([
+            'content' => 'required|string|max:3000',
+            'post_type' => 'required|in:text,image,video',
+            'scheduled_at' => 'nullable|date|after:now',
+            'hashtags' => 'nullable|string|max:500',
+            'images.*' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
+            'video' => 'nullable|mimes:mp4,avi,mov,wmv|max:102400'
+        ]);
+
+        // Validate that only one media type is selected based on post_type
+        if ($request->post_type === 'image' && $request->hasFile('video')) {
+            return back()->withErrors(['video' => 'Cannot upload video for image post type.'])->withInput();
+        }
+        
+        if ($request->post_type === 'video' && $request->hasFile('images')) {
+            return back()->withErrors(['images' => 'Cannot upload images for video post type.'])->withInput();
+        }
+
+        $imageUrls = $post->image_url; // Keep existing images by default
+        $videoUrl = $post->video_url; // Keep existing video by default
+
+        // Handle new image uploads (for image post type)
+        if ($request->post_type === 'image' && $request->hasFile('images')) {
+            $cloudinaryService = new LinkedInContentService();
+            
+            if (!$cloudinaryService->isConfigured()) {
+                \Log::error('Invalid configuration, please set up your environment', [
+                    'userId' => auth()->id()
+                ]);
+                return back()->withErrors(['upload' => 'Media upload service is not configured. Please contact support or upload your media directly when publishing.'])->withInput();
+            }
+            
+            try {
+                $imageUrls = $cloudinaryService->uploadCarouselImages($request->file('images'));
+            } catch (\Exception $e) {
+                \Log::error('Failed to upload images', ['error' => $e->getMessage()]);
+                return back()->withErrors(['images' => 'Failed to upload images: ' . $e->getMessage()])->withInput();
+            }
+        }
+
+        // Handle new video upload (only for video post type)
+        if ($request->post_type === 'video' && $request->hasFile('video')) {
+            $cloudinaryService = new LinkedInContentService();
+            
+            if (!$cloudinaryService->isConfigured()) {
+                \Log::error('Invalid configuration, please set up your environment', [
+                    'userId' => auth()->id()
+                ]);
+                return back()->withErrors(['upload' => 'Media upload service is not configured. Please contact support or upload your media directly when publishing.'])->withInput();
+            }
+            
+            try {
+                $videoUrl = $cloudinaryService->uploadVideo($request->file('video'));
+            } catch (\Exception $e) {
+                \Log::error('Failed to upload video', ['error' => $e->getMessage()]);
+                return back()->withErrors(['video' => 'Failed to upload video: ' . $e->getMessage()])->withInput();
+            }
+        }
+
+        // Determine status based on publish option
+        $status = 'draft';
+        $scheduledAt = null;
+
+        if ($request->publish_option === 'now') {
+            $status = 'ready_to_publish';
+            $scheduledAt = now();
+        } elseif ($request->publish_option === 'schedule' && $request->scheduled_at) {
+            $status = 'scheduled';
+            $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
+        }
+
+        // Truncate hashtags if too long
+        $hashtags = $request->hashtags;
+        if ($hashtags && strlen($hashtags) > 65535) {
+            $hashtags = substr($hashtags, 0, 65535);
+            \Log::warning('⚠️ Hashtags truncated due to length', [
+                'original_length' => strlen($request->hashtags),
+                'truncated_length' => strlen($hashtags)
+            ]);
+        }
+
+        $post->update([
+            'content' => $request->content,
+            'image_url' => $imageUrls,
+            'video_url' => $videoUrl,
+            'post_type' => $request->post_type,
+            'status' => $status,
+            'scheduled_at' => $scheduledAt,
+            'hashtags' => $hashtags,
+            'word_count' => str_word_count($request->content)
+        ]);
+
+        if ($status === 'scheduled') {
+            \App\Jobs\PublishLinkedInPost::dispatch($post)->delay($scheduledAt);
+        } elseif ($status === 'ready_to_publish') {
+            \App\Jobs\PublishLinkedInPost::dispatchSync($post);
+        }
+
+        notify()->success('Post updated successfully!');
+        return redirect()->route('content-creator.index');
+    }
+
+    /**
      * Generate content using AI (now returns multiple drafts)
      */
     public function generate(Request $request)

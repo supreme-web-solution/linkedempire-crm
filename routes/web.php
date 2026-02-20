@@ -440,6 +440,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/content-creator', 'index')->name('content-creator.index');
         Route::get('/content-creator/create', 'create')->name('content-creator.create');
         Route::post('/content-creator/store', 'store')->name('content-creator.store');
+        Route::get('/content-creator/edit/{id}', 'edit')->name('content-creator.edit');
+        Route::post('/content-creator/update/{id}', 'update')->name('content-creator.update');
         Route::post('/content-creator/generate', 'generate')->name('content-creator.generate');
         Route::post('/content-creator/improve', 'improvePost')->name('content-creator.improve');
         Route::post('/content-creator/rewrite', 'rewrite')->name('content-creator.rewrite');
