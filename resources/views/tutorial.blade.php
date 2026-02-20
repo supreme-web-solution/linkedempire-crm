@@ -74,7 +74,7 @@
             label: 'Leads & AI Messages'
         },
         {
-            link: 'https://vimeo.com/1165391895', 
+            link: 'https://mega.nz/file/kXcSTCzL#Kdn7OU8pRq0er_Bm1KOYj2TzeH1uE3eejrcl0p_q-Vs', 
             thumbnail: 'https://i.vimeocdn.com/video/1917028869-6a757dd5e2ebe1b42105a56c3417b29de436e4f6941cf1e07887c0df72edbf57-d_640x360',
             label: 'Extension Features'
         },
