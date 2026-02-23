@@ -625,12 +625,19 @@ class LinkedInCompetitorController extends Controller
         $meta = json_decode($audience->source_meta, true) ?? [];
         $status = $meta['fetch_status'] ?? null;
         $progress = $meta['fetch_progress'] ?? null;
-        
+        $storedCount = (int) ($meta['stored_count'] ?? 0);
+        $fetchCompletedAt = $meta['fetch_completed_at'] ?? null;
+
+        // If status says failed but we have a completed timestamp and stored data, treat as completed (avoids UI showing failed when job actually finished successfully)
+        if ($status === 'failed' && $fetchCompletedAt && $storedCount > 0) {
+            $status = 'completed';
+        }
+
         return response()->json([
             'status' => $status,
             'progress' => $progress,
             'fetch_started_at' => $meta['fetch_started_at'] ?? null,
-            'fetch_completed_at' => $meta['fetch_completed_at'] ?? null,
+            'fetch_completed_at' => $fetchCompletedAt,
             'fetch_failed_at' => $meta['fetch_failed_at'] ?? null,
             'stored_count' => $meta['stored_count'] ?? null,
             'total_fetched' => $meta['total_fetched'] ?? null

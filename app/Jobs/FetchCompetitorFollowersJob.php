@@ -55,12 +55,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
         // Update status to processing IMMEDIATELY when job starts
         $this->updateFetchStatus($audience, 'processing', '🚀 Warming up the engines...');
 
-        Log::info('🚀 FetchCompetitorFollowersJob: Job picked up and started processing', [
-            'audience_id' => $audience->audience_id,
-            'user_id' => $this->userId,
-            'company_url' => $this->companyUrl,
-            'job_id' => $this->job->getJobId() ?? 'unknown'
-        ]);
 
         $service = new PhantomBusterService();
         $uniqueByPublicId = [];
@@ -78,12 +72,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                     $scrapedPostUrls = $meta['scraped_post_urls'];
                 }
             }
-            
-            Log::info('FetchCompetitorFollowersJob: Checking for already-scraped posts', [
-                'audience_id' => $audience->audience_id,
-                'already_scraped_count' => count($scrapedPostUrls),
-                'company_url' => $this->companyUrl
-            ]);
             
             // Update status: fetching engagers
             $this->updateFetchStatus($audience, 'processing', '⚡ Extracting active engagers...');
@@ -105,12 +93,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
             $followers = $result['engagers'] ?? $result;
             $newlyScrapedPosts = $result['newly_scraped_posts'] ?? [];
             
-            Log::info('FetchCompetitorFollowersJob: PhantomBuster returned engagers', [
-                'company_url' => $this->companyUrl,
-                'engagers_count' => is_array($followers) ? count($followers) : 0,
-                'newly_scraped_posts_count' => count($newlyScrapedPosts)
-            ]);
-            
             // Update audience source_meta with newly scraped post URLs
             if (!empty($newlyScrapedPosts)) {
                 $existingScraped = $scrapedPostUrls;
@@ -121,11 +103,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 $audience->source_meta = json_encode($meta);
                 $audience->save();
                 
-                Log::info('FetchCompetitorFollowersJob: Updated audience with scraped posts', [
-                    'audience_id' => $audience->audience_id,
-                    'newly_scraped' => count($newlyScrapedPosts),
-                    'total_scraped' => count($allScraped)
-                ]);
             }
 
             // Update status: storing followers
@@ -140,13 +117,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 $this->storeFollower($audience, $follower, $uniqueByPublicId, $created);
             }
 
-            Log::info('✅ FetchCompetitorFollowersJob: PhantomBuster followers stored', [
-                'audience_id' => $audience->audience_id,
-                'stored' => $created,
-                'total_fetched' => count($followers),
-                'unique_by_public_id' => count($uniqueByPublicId)
-            ]);
-            
             // Only mark as completed if we actually stored followers
             if ($created > 0) {
                 // Update status to completed
@@ -200,10 +170,6 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 $audience->source_meta = json_encode($meta);
                 $audience->save();
                 
-                Log::info('💾 FetchCompetitorFollowersJob: Stored session error in audience', [
-                    'audience_id' => $audience->audience_id,
-                    'error_message' => $e->getMessage()
-                ]);
             }
             
             // Update status to failed

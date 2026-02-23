@@ -246,15 +246,24 @@ $(document).ready(function() {
                         location.reload();
                     }, 2000);
                 } else if (response.status === 'failed') {
-                    // Stop polling
-                    if (statusPollIntervals[audienceId]) {
-                        clearInterval(statusPollIntervals[audienceId]);
-                        delete statusPollIntervals[audienceId];
+                    // If we have completed data (stored_count), show completed instead of failed (job may have finished after a transient error)
+                    if (response.fetch_completed_at && response.stored_count > 0) {
+                        if (statusPollIntervals[audienceId]) {
+                            clearInterval(statusPollIntervals[audienceId]);
+                            delete statusPollIntervals[audienceId];
+                        }
+                        const badgeHtml = '<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Completed</span>';
+                        row.find('.fetch-status-container').html(badgeHtml);
+                        setTimeout(function() { location.reload(); }, 2000);
+                    } else {
+                        // Stop polling
+                        if (statusPollIntervals[audienceId]) {
+                            clearInterval(statusPollIntervals[audienceId]);
+                            delete statusPollIntervals[audienceId];
+                        }
+                        const badgeHtml = '<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Failed</span>';
+                        row.find('.fetch-status-container').html(badgeHtml);
                     }
-                    
-                    // Update to failed badge
-                    const badgeHtml = '<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Failed</span>';
-                    row.find('.fetch-status-container').html(badgeHtml);
                 }
             },
             error: function() {
