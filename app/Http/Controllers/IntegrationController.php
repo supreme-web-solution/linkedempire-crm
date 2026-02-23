@@ -91,16 +91,20 @@ class IntegrationController extends Controller
 
         Log::info('Step 3: Getting profile image');
 
-        // Get profile image
+        // Get profile image (optional - do not fail connection if missing or different structure)
+        $pictureUrl = null;
         try {
             $profile_img = $linkedin->getUserProfileImg($access_token['access_token']);
-            Log::info('✅ Profile image received');
+            $pictureUrl = data_get($profile_img, 'profilePicture.displayImage~.elements.0.identifiers.0.identifier');
+            if ($pictureUrl) {
+                Log::info('✅ Profile image received');
+            } else {
+                Log::info('Profile image response missing expected structure, using null');
+            }
         } catch (\Throwable $th) {
-            Log::error('❌ Failed to get profile image', [
+            Log::warning('Could not get profile image (connection will continue)', [
                 'error' => $th->getMessage()
             ]);
-            notify()->error($th->getMessage());
-            return redirect()->route('social-account.index');
         }
 
         Log::info('Step 4: Getting email from OpenID');
@@ -132,7 +136,7 @@ class IntegrationController extends Controller
                 'first_name' => $profile['localizedFirstName'],
                 'last_name' => $profile['localizedLastName'],
                 'email' => $openIdProfile['email'],
-                'picture' => $profile_img['profilePicture']['displayImage~']['elements'][0]['identifiers'][0]['identifier'],
+                'picture' => $pictureUrl,
                 'connected_status' => 1,
                 'user_id' => auth()->user()->id
             ]);
