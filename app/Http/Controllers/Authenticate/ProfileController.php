@@ -39,7 +39,7 @@ class ProfileController extends Controller
         $data = $request->validate([
             'name' => ['required'],
             'email' => ['required','email'],
-            'linkedin_id' => ['required'],
+            'linkedin_id' => ['required', 'string', 'max:255'],
             'timezone' => ['required']
         ]);
 

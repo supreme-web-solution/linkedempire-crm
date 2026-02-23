@@ -93,13 +93,14 @@ class UserManagerController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string'],
             'email' => ['required', 'email', 'string'],
+            'linkedin_id' => ['nullable', 'string', 'max:255'],
         ]);
 
-        if($request->password){
+        if ($request->password) {
             $data['password'] = bcrypt($request->password);
         }
 
-        $data['linkedin_id'] = $request->linkedin_id;
+        $data['linkedin_id'] = $request->linkedin_id ?? null;
 
         $user->update($data);
 
