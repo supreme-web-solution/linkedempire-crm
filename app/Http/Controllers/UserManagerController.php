@@ -23,6 +23,7 @@ use App\Models\ModelHasPermission;
 use Spatie\Permission\Models\Permission;
 use App\Helpers\DeleteUserResource;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Query\JoinClause;
 use DB;
 use Log;
@@ -185,5 +186,27 @@ class UserManagerController extends Controller
         }else {
             return redirect()->route('reseller.index');
         }
+    }
+
+    public function impersonate(string $id)
+    {
+        $currentUser = auth()->user();
+
+        if (!$currentUser || !$currentUser->hasRole('Admin')) {
+            abort(403, 'You are not authorized to impersonate users.');
+        }
+
+        $user = User::findOrFail($id);
+
+        if ($user->id === $currentUser->id) {
+            return redirect()->route('users.index');
+        }
+
+        Auth::logout();
+
+        Auth::login($user);
+        session()->regenerate();
+
+        return redirect()->route('dashboard');
     }
 }

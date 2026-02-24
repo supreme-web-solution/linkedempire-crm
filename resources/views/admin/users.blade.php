@@ -98,6 +98,19 @@
                                     <path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 002.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 00.374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 00-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08zm3.094 8.016a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd" />
                                     </svg>
                                 </button>
+                                <!-- Impersonate -->
+                                <form action="{{ route('user.impersonate', ['id' => $user->id]) }}" method="post" onsubmit="return confirm('You will be logged out of your current account and logged in as this user. Continue?');">
+                                    @csrf
+                                    <button 
+                                    type="submit"
+                                    class="text-purple-600 hover:text-purple-800 transition-colors" 
+                                    title="Login as this user">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                                            <path d="M11.25 4.5a.75.75 0 000 1.5h6.69l-8.72 8.72a.75.75 0 101.06 1.06l8.72-8.72v6.69a.75.75 0 001.5 0v-9a.75.75 0 00-.75-.75h-9z" />
+                                            <path d="M5.25 5.25A2.25 2.25 0 003 7.5v11.25A2.25 2.25 0 005.25 21h11.25a2.25 2.25 0 002.25-2.25v-2.5a.75.75 0 00-1.5 0v2.5a.75.75 0 01-.75.75H5.25a.75.75 0 01-.75-.75V7.5a.75.75 0 01.75-.75h2.5a.75.75 0 000-1.5h-2.5z" />
+                                        </svg>
+                                    </button>
+                                </form>
                                 <!-- Delete -->
                                 <form action="{{route('user.delete', ['id' => $user->id])}}" method="post">
                                     @csrf

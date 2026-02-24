@@ -557,6 +557,7 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/admin/user/delete/{id}', 'destroy')->name('user.delete');
         Route::get('/admin/user/permissions', 'userPermissions')->name('user.permissions');
         Route::put('/admin/user/assign-permissions', 'assignPermissions')->name('user.assign-permissions');
+        Route::post('/admin/user/impersonate/{id}', 'impersonate')->name('user.impersonate');
 
         Route::get('/reseller/users', 'resellerIndex')->name('reseller.index');
     });
