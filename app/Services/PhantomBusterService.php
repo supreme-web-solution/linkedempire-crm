@@ -687,9 +687,20 @@ class PhantomBusterService
                 } catch (\Exception $e) {
                     $likersFailed = true;
                     $errorMsg = $e->getMessage();
-                    $isAlreadyScraped = str_contains($errorMsg, 'already scraped') || 
-                                       str_contains($errorMsg, 'input is empty');
-                    
+
+                    // If this looks like a LinkedIn session / cookie issue, bubble it up
+                    // so the job can mark the audience with a clear session-cookie error.
+                    $isSessionError = stripos($errorMsg, 'session cookie') !== false
+                        || stripos($errorMsg, 'li_at') !== false
+                        || stripos($errorMsg, 'credentials') !== false
+                        || stripos($errorMsg, 'Invalid/expired cookie') !== false
+                        || stripos($errorMsg, 'cookie-invalid') !== false
+                        || stripos($errorMsg, 'session expired') !== false;
+
+                    if ($isSessionError) {
+                        throw $e;
+                    }
+
                     Log::warning('PhantomBuster: Failed to get likers for post', [
                         'post_url' => $postUrl,
                         'error' => substr($errorMsg, 0, 200)

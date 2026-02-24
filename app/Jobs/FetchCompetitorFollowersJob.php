@@ -128,7 +128,7 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                 // No followers were stored - decide what error to surface
                 $errorMessage = 'No new profiles were added. Try again later or check if the company has recent post activity.';
                 if (count($followers) === 0) {
-                    $errorMessage = 'No active engagers found. The company may have limited recent activity or the posts had no interactions.';
+                    $errorMessage = 'No active engagers found. The company may have limited recent activity';
                 }
 
                 // Read existing meta once so we can avoid overwriting a previous session-cookie error
