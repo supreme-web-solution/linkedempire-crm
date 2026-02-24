@@ -125,26 +125,36 @@ class FetchCompetitorFollowersJob implements ShouldQueue
                     'total_fetched' => count($followers)
                 ]);
             } else {
-                // No followers were stored - mark as failed with explanation
+                // No followers were stored - decide what error to surface
                 $errorMessage = 'No new profiles were added. Try again later or check if the company has recent post activity.';
                 if (count($followers) === 0) {
                     $errorMessage = 'No active engagers found. The company may have limited recent activity or the posts had no interactions.';
                 }
-                
-                $this->updateFetchStatus($audience, 'failed', $errorMessage);
-                
-                // Store error in source_meta for UI display
+
+                // Read existing meta once so we can avoid overwriting a previous session-cookie error
                 $meta = json_decode($audience->source_meta, true) ?? [];
-                $meta['last_error'] = $errorMessage;
-                $meta['last_error_type'] = 'no_data';
-                $meta['last_error_at'] = now()->toIso8601String();
-                $audience->source_meta = json_encode($meta);
-                $audience->save();
-                
+                $existingErrorType = $meta['last_error_type'] ?? null;
+
+                // If a previous run already detected a session cookie problem, KEEP that as the main error
+                if ($existingErrorType === 'session_cookie') {
+                    // Just update status to failed with a generic message; UI will still show the cookie-specific block
+                    $this->updateFetchStatus($audience, 'failed', $meta['last_error'] ?? 'Failed due to LinkedIn session cookie issue.');
+                } else {
+                    // Otherwise, treat this as a "no data" failure and store it for the UI
+                    $this->updateFetchStatus($audience, 'failed', $errorMessage);
+
+                    $meta['last_error'] = $errorMessage;
+                    $meta['last_error_type'] = 'no_data';
+                    $meta['last_error_at'] = now()->toIso8601String();
+                    $audience->source_meta = json_encode($meta);
+                    $audience->save();
+                }
+
                 Log::warning('⚠️ FetchCompetitorFollowersJob: Completed but no followers stored', [
                     'audience_id' => $audience->audience_id,
                     'total_fetched' => count($followers),
-                    'stored' => $created
+                    'stored' => $created,
+                    'existing_error_type' => $existingErrorType
                 ]);
             }
         } catch (\Exception $e) {
