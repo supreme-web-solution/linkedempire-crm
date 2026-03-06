@@ -513,8 +513,8 @@
                                    name="scheduled_at" 
                                    id="scheduledAt"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0077b5] @error('scheduled_at') border-red-500 @enderror"
-                                   min="{{ now()->format('Y-m-d\TH:i') }}"
-                                   value="{{ old('scheduled_at', $post->scheduled_at ? $post->scheduled_at->format('Y-m-d\TH:i') : '') }}">
+                                   min="{{ now($userTimezone)->format('Y-m-d\TH:i') }}"
+                                   value="{{ old('scheduled_at', $post->scheduled_at ? $post->scheduled_at->setTimezone($userTimezone)->format('Y-m-d\TH:i') : '') }}">
                             @error('scheduled_at')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror

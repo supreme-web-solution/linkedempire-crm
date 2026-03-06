@@ -274,7 +274,7 @@
                 <div class="flex items-center justify-between">
                     <span>Created: {{ $post->created_at->format('M j, Y') }}</span>
                     @if($post->scheduled_at)
-                    <span>Scheduled: {{ $post->scheduled_at->format('M j, Y g:i A') }}</span>
+                    <span>Scheduled: {{ $post->scheduled_at->setTimezone($userTimezone)->format('M j, Y g:i A') }}</span>
                     @endif
                 </div>
                 @if($post->published_at)
@@ -433,7 +433,7 @@
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {{ $post->created_at->format('M j, Y') }}
                     @if($post->scheduled_at)
-                    <div class="text-xs text-gray-400">Scheduled: {{ $post->scheduled_at->format('M j, g:i A') }}</div>
+                    <div class="text-xs text-gray-400">Scheduled: {{ $post->scheduled_at->setTimezone($userTimezone)->format('M j, g:i A') }}</div>
                     @endif
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -512,7 +512,7 @@
                         </label>
                         <input type="datetime-local" id="scheduleDateTime" 
                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0077b5]"
-                               min="{{ now()->format('Y-m-d\TH:i') }}">
+                               min="{{ now($userTimezone)->format('Y-m-d\TH:i') }}">
                     </div>
                     <div class="flex justify-end space-x-3">
                         <button type="button" onclick="closeScheduleModal()" 

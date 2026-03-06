@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LinkedInPost;
 use App\Models\PostTemplate;
+use App\Models\Timezone;
 use App\Services\ChatGPT;
 use App\Services\LinkedInContentService;
 use App\Helpers\CampaignHelper;
@@ -22,6 +23,7 @@ class ContentCreatorController extends Controller
     {
         $userId = auth()->user()->id;
         $status = $request->query('status', 'all');
+        $userTimezone = $this->getUserTimezone();
         
         $query = LinkedInPost::where('user_id', $userId);
         
@@ -39,7 +41,7 @@ class ContentCreatorController extends Controller
             'published_posts' => LinkedInPost::where('user_id', $userId)->where('status', 'published')->count(),
         ];
         
-        return view('content-creator.index', compact('posts', 'stats', 'status'));
+        return view('content-creator.index', compact('posts', 'stats', 'status', 'userTimezone'));
     }
 
     /**
@@ -54,8 +56,9 @@ class ContentCreatorController extends Controller
             
         $categories = PostTemplate::getCategories();
         $industries = PostTemplate::getIndustries();
+        $userTimezone = $this->getUserTimezone();
         
-        return view('content-creator.create', compact('templates', 'categories', 'industries'));
+        return view('content-creator.create', compact('templates', 'categories', 'industries', 'userTimezone'));
     }
 
     /**
@@ -66,7 +69,7 @@ class ContentCreatorController extends Controller
         $request->validate([
             'content' => 'required|string|max:3000',
             'post_type' => 'required|in:text,image,video',
-            'scheduled_at' => 'nullable|date|after:now',
+            'scheduled_at' => 'nullable|date',
             'hashtags' => 'nullable|string|max:500',
             'images.*' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240', // For multiple images (PNG, JPG, WEBP only)
             'video' => 'nullable|mimes:mp4,avi,mov,wmv|max:102400' // 100MB max for video
@@ -129,9 +132,12 @@ class ContentCreatorController extends Controller
             $scheduledAt = now();
         } elseif ($request->publish_option === 'schedule' && $request->scheduled_at) {
             $status = 'scheduled';
-            // Parse the datetime and assume it's in UTC (since datetime-local doesn't include timezone)
-            // If user has a timezone setting, we should convert it
-            $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
+            $scheduledAt = $this->parseUserDatetimeLocalToUtc($request->scheduled_at);
+            if ($scheduledAt->lte(Carbon::now('UTC'))) {
+                return back()
+                    ->withErrors(['scheduled_at' => 'Scheduled time must be in the future.'])
+                    ->withInput();
+            }
             
         }
 
@@ -173,6 +179,7 @@ class ContentCreatorController extends Controller
     public function edit($id)
     {
         $post = LinkedInPost::where('user_id', auth()->id())->findOrFail($id);
+        $userTimezone = $this->getUserTimezone();
         
         // Only allow editing draft posts
         if ($post->status !== 'draft') {
@@ -188,7 +195,7 @@ class ContentCreatorController extends Controller
         $categories = PostTemplate::getCategories();
         $industries = PostTemplate::getIndustries();
         
-        return view('content-creator.edit', compact('post', 'templates', 'categories', 'industries'));
+        return view('content-creator.edit', compact('post', 'templates', 'categories', 'industries', 'userTimezone'));
     }
 
     /**
@@ -207,7 +214,7 @@ class ContentCreatorController extends Controller
         $request->validate([
             'content' => 'required|string|max:3000',
             'post_type' => 'required|in:text,image,video',
-            'scheduled_at' => 'nullable|date|after:now',
+            'scheduled_at' => 'nullable|date',
             'hashtags' => 'nullable|string|max:500',
             'images.*' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
             'video' => 'nullable|mimes:mp4,avi,mov,wmv|max:102400'
@@ -272,7 +279,12 @@ class ContentCreatorController extends Controller
             $scheduledAt = now();
         } elseif ($request->publish_option === 'schedule' && $request->scheduled_at) {
             $status = 'scheduled';
-            $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
+            $scheduledAt = $this->parseUserDatetimeLocalToUtc($request->scheduled_at);
+            if ($scheduledAt->lte(Carbon::now('UTC'))) {
+                return back()
+                    ->withErrors(['scheduled_at' => 'Scheduled time must be in the future.'])
+                    ->withInput();
+            }
         }
 
         // Truncate hashtags if too long
@@ -550,6 +562,27 @@ class ContentCreatorController extends Controller
         return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 
+    private function getUserTimezone(): string
+    {
+        $user = auth()->user();
+        if (!$user || !$user->time_zone_id) {
+            return 'UTC';
+        }
+
+        $timezone = Timezone::select('time_zone')->find($user->time_zone_id);
+        return $timezone?->time_zone ?: 'UTC';
+    }
+
+    /**
+     * Convert an HTML5 datetime-local string (no timezone info) from the user's
+     * profile timezone into UTC for storage/scheduling.
+     */
+    private function parseUserDatetimeLocalToUtc(string $datetimeLocal): Carbon
+    {
+        $userTimezone = $this->getUserTimezone();
+        return Carbon::parse($datetimeLocal, $userTimezone)->setTimezone('UTC');
+    }
+
     /**
      * Schedule a post
      */
@@ -558,11 +591,16 @@ class ContentCreatorController extends Controller
         $post = LinkedInPost::where('user_id', auth()->id())->findOrFail($id);
         
         $request->validate([
-            'scheduled_at' => 'required|date|after:now'
+            'scheduled_at' => 'required|date'
         ]);
 
-        // Parse the datetime and assume it's in UTC (since datetime-local doesn't include timezone)
-        $scheduledAt = Carbon::parse($request->scheduled_at, 'UTC');
+        $scheduledAt = $this->parseUserDatetimeLocalToUtc($request->scheduled_at);
+        if ($scheduledAt->lte(Carbon::now('UTC'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Scheduled time must be in the future.'
+            ], 422);
+        }
 
         $post->update([
             'status' => 'scheduled',
