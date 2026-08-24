@@ -146,9 +146,7 @@ class ChatGPT
                 ->throw()
                 ->json();
                 
-            Log::info('✅ ChatGPT API response successful', [
-                'response' => $response
-            ]);
+          
         } catch (\Throwable $th) {
             Log::error('❌ ChatGPT API call failed', [
                 'error' => $th->getMessage(),
