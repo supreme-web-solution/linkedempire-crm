@@ -2,7 +2,8 @@
 
 return [
 
-    'require_entitlement' => env('BILLING_REQUIRE_ENTITLEMENT', env('APP_ENV') === 'local' ? false : true),
+    // When false, any valid account can use the CRM and extension (no FE/Bundle gate).
+    'require_entitlement' => env('BILLING_REQUIRE_ENTITLEMENT', false),
 
     'platform_admin_emails' => array_filter(array_map(
         'trim',
