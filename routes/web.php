@@ -15,9 +15,7 @@ use App\Http\Controllers\CallManagerController;
 use App\Http\Controllers\CalendlyController;
 use App\Http\Controllers\LeadController;
 use App\Http\Controllers\AiwriterController;
-use App\Http\Controllers\SchedulePostController;
 use App\Http\Controllers\SocialAccountController;
-use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TeamInviteController;
 use App\Http\Controllers\UserManagerController;
@@ -385,6 +383,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/campaign', 'create')->name('campaign.create');
         Route::post('/campaign/store', 'store')->name('campaign.store');
         Route::post('/campaign/update/{id}', 'update')->name('campaign.update');
+        Route::post('/campaign/{id}/activate', 'activate')->name('campaign.activate');
+        Route::post('/campaign/{id}/pause', 'pause')->name('campaign.pause');
         Route::post('/campaign/removelist/{id}', 'removelist')->name('campaign.removelist');
         Route::delete('/campaign/delete/{id}', 'destroy')->name('campaign.delete');
         Route::post('/sequence/store', 'storeSequence')->name('sequence.store');
@@ -471,36 +471,30 @@ Route::middleware(['auth'])->group(function () {
     // Inspiration Library Routes (Viral Posts Discovery)
     Route::controller(App\Http\Controllers\InspirationController::class)->group(function () {
         Route::get('/inspiration', 'index')->name('inspiration.index');
-        Route::post('/inspiration/preferences', 'updatePreferences')->name('inspiration.preferences.update');
+        Route::post('/inspiration/fetch', 'fetch')->name('inspiration.fetch');
+        Route::post('/inspiration/bulk-delete', 'bulkDestroy')->name('inspiration.bulk-destroy');
         Route::post('/inspiration/store', 'storeFromWeb')->name('inspiration.store');
-        Route::delete('/inspiration/delete/{id}', 'destroy')->name('inspiration.delete');
-        Route::post('/inspiration/favorite/{id}', 'toggleFavorite')->name('inspiration.favorite');
-        Route::get('/inspiration/use/{id}', 'useAsInspiration')->name('inspiration.use');
-        Route::post('/inspiration/remix/{id}', 'remix')->name('inspiration.remix');
-        Route::get('/inspiration/categories', 'getCategories')->name('inspiration.categories');
-        Route::post('/inspiration/fetch', 'triggerFetch')->name('inspiration.fetch');
-        Route::get('/inspiration/fetch/status', 'getFetchStatus')->name('inspiration.fetch.status');
+        Route::post('/inspiration/{id}/favorite', 'toggleFavorite')->whereNumber('id')->name('inspiration.favorite');
+        Route::get('/inspiration/use/{id}', 'useAsInspiration')->whereNumber('id')->name('inspiration.use');
+        Route::post('/inspiration/{id}/remix', 'remix')->whereNumber('id')->name('inspiration.remix');
+        Route::delete('/inspiration/{id}', 'destroy')->whereNumber('id')->name('inspiration.delete');
     });
 
-    Route::controller(SchedulePostController::class)->group(function () {
-        Route::get('/posts', 'index')->name('post.index');
-        Route::get('/post/new', 'create')->name('post.create');
-        Route::post('/post/store', 'store')->name('post.store');
-        Route::get('/post/edit/{id}', 'edit')->name('post.edit');
-        Route::put('/post/update/{id}', 'update')->name('post.update');
-        Route::delete('/post/delete/{id}', 'destroy')->name('post.delete');
-        Route::post('/post/generate-aicontent', 'generateAiContent')->name('post.aigenerate');
-    });
+    Route::get('/integrations', function (Illuminate\Http\Request $request) {
+        return redirect()->route('social-account.index', $request->query());
+    })->name('integrations');
+
+    Route::post('/unipile/callback', [\App\Http\Controllers\V2\ProviderWebhookController::class, 'unipile'])
+        ->name('unipile.callback');
 
     Route::controller(SocialAccountController::class)->group(function () {
         Route::get('/social-account', 'index')->name('social-account.index');
+        Route::post('/social-account/linkedin/connect', 'startLinkedInConnect')->name('social-account.linkedin.connect');
+        Route::post('/social-account/linkedin/cookie', 'connectLinkedInCookie')->name('social-account.linkedin.cookie');
+        Route::post('/social-account/linkedin/verify', 'verifyLinkedIn')->name('social-account.linkedin.verify');
+        Route::delete('/social-account/linkedin/{id}', 'disconnectLinkedIn')->name('social-account.linkedin.disconnect');
         Route::post('/social-account/{integration}/credentials', 'storeCredentials')->name('social-account.credentials');
         Route::delete('/social-account/disconnect/{id}', 'disconnect')->name('social-account.disconnect');
-    });
-
-    Route::controller(IntegrationController::class)->group(function () {
-        Route::get('/integration/linkedin/login', 'login')->name('integration.login');
-        Route::get('/integration/linkedin/callback', 'callback')->name('integration.callback');
     });
 
     Route::controller(CalendlyController::class)->group(function () {

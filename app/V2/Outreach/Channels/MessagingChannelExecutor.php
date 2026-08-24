@@ -1,0 +1,182 @@
+<?php
+
+namespace App\V2\Outreach\Channels;
+
+use App\Models\V2OutreachCampaign;
+use App\Models\V2OutreachLead;
+use App\V2\Integrations\ProviderManager;
+use App\V2\Outreach\OutreachChannelRegistry;
+use App\V2\Outreach\OutreachLeadContactResolver;
+use App\V2\Outreach\OutreachSendProof;
+use App\V2\Outreach\OutreachSequenceResolver;
+use App\V2\Services\UnifiedInboxService;
+use Illuminate\Support\Facades\Log;
+
+class MessagingChannelExecutor implements ChannelExecutorInterface
+{
+    public function __construct(
+        private readonly string $channelKey,
+        private readonly ProviderManager $providerManager,
+        private readonly OutreachLeadContactResolver $contactResolver,
+        private readonly UnifiedInboxService $unifiedInbox,
+        private readonly OutreachSequenceResolver $resolver = new OutreachSequenceResolver(),
+    ) {}
+
+    public function channel(): string
+    {
+        return $this->channelKey;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    public function execute(
+        string $action,
+        V2OutreachCampaign $campaign,
+        V2OutreachLead $lead,
+        array $node,
+        array $context,
+    ): array {
+        if ($action !== 'send_message') {
+            return ['status' => 'failed', 'error_message' => "Unsupported {$this->channelKey} action: {$action}"];
+        }
+
+        $row = $this->leadContactRow($lead);
+        $recipientId = $this->contactResolver->messagingRecipientId($row, $this->channelKey);
+        if ($recipientId === null || $recipientId === '') {
+            $hint = match ($this->channelKey) {
+                'whatsapp' => 'Run Verify WhatsApp before sending.',
+                'instagram', 'twitter' => 'Run Resolve handles before sending.',
+                default => 'Missing recipient identifier.',
+            };
+
+            return ['status' => 'skipped', 'error_message' => $hint];
+        }
+
+        $firstName = $this->resolver->firstNameFromLead($lead->full_name);
+        $message = $this->resolver->messageText($node, $firstName);
+
+        try {
+            $providerKey = $this->providerManager->defaultProvider();
+            $response = $this->providerManager->messaging($providerKey)->startChat([
+                'attendee_ids' => [$recipientId],
+                'text' => $message ?: 'Hello',
+            ], array_merge($context, ['channel' => $this->channelKey]));
+
+            $responseArray = is_array($response) ? $response : [];
+            $proof = OutreachSendProof::fromResponse($responseArray);
+
+            if ($proof['chat_id'] === '' && $proof['provider_message_id'] === '') {
+                return [
+                    'status' => 'failed',
+                    'error_message' => 'Message was not confirmed as sent (missing chat/message id).',
+                ];
+            }
+
+            $conversation = $this->unifiedInbox->recordOutboundChat(
+                (int) $campaign->user_id,
+                (int) $campaign->organization_id,
+                $this->channelKey,
+                $lead,
+                $recipientId,
+                $responseArray,
+                $message ?: 'Hello',
+            );
+
+            if ($conversation === null) {
+                return [
+                    'status' => 'failed',
+                    'error_message' => 'Message could not be linked to inbox — treat as not sent.',
+                ];
+            }
+
+            if ($proof['provider_message_id'] === '') {
+                return [
+                    'status' => 'awaiting_send_confirmation',
+                    'payload' => [
+                        'response' => $responseArray,
+                        'chat_id' => $proof['chat_id'],
+                        'conversation_id' => $conversation->id,
+                    ],
+                ];
+            }
+
+            return [
+                'status' => 'completed',
+                'payload' => [
+                    'response' => $responseArray,
+                    'chat_id' => $proof['chat_id'],
+                    'provider_message_id' => $proof['provider_message_id'],
+                    'conversation_id' => $conversation->id,
+                    'confirmed_sent' => true,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            $message = $e->getMessage();
+            Log::error('[Outreach] Messaging action failed', [
+                'channel' => $this->channelKey,
+                'error' => $message,
+            ]);
+
+            $linkedIn = app(\App\V2\Services\LinkedInConnectionService::class);
+            if ($linkedIn->isDisconnectedError($e)
+                || app(\App\V2\Outreach\OutreachChannelGuard::class)->isDisconnected($e)) {
+                return [
+                    'status' => 'channel_disconnected',
+                    'error_message' => $message,
+                    'payload' => ['channel' => $this->channelKey],
+                ];
+            }
+
+            if ($this->isUnreachableRecipientError($message)) {
+                return [
+                    'status' => 'skipped',
+                    'error_message' => 'Recipient is not reachable on '.OutreachChannelRegistry::channelLabel($this->channelKey).'. Verify the contact first.',
+                ];
+            }
+
+            $tempLimit = app(\App\V2\Services\UnipileTemporaryLimitGuard::class);
+            if ($tempLimit->isTemporaryLimit($e)) {
+                return $tempLimit->deferredResult(
+                    (int) $campaign->user_id,
+                    $this->channelKey,
+                    $message,
+                );
+            }
+
+            // Never surface raw provider wording in the activity feed.
+            return [
+                'status' => 'failed',
+                'error_message' => 'Could not send on '.OutreachChannelRegistry::channelLabel($this->channelKey).' right now. We will keep trying on the next run.',
+            ];
+        }
+    }
+
+    private function isUnreachableRecipientError(string $message): bool
+    {
+        $normalized = strtolower($message);
+
+        return str_contains($normalized, 'invalid_recipient')
+            || str_contains($normalized, 'recipient cannot be reached')
+            || str_contains($normalized, 'profile is not locked');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function leadContactRow(V2OutreachLead $lead): array
+    {
+        $meta = is_array($lead->meta) ? $lead->meta : [];
+
+        return [
+            'phone' => trim((string) ($lead->phone ?? '')),
+            'whatsapp_provider_id' => trim((string) ($meta['whatsapp_provider_id'] ?? '')),
+            'instagram_handle' => trim((string) ($meta['instagram_handle'] ?? '')),
+            'instagram_provider_id' => trim((string) ($meta['instagram_provider_id'] ?? '')),
+            'telegram_handle' => trim((string) ($meta['telegram_handle'] ?? '')),
+            'telegram_provider_id' => trim((string) ($meta['telegram_provider_id'] ?? '')),
+            'twitter_handle' => trim((string) ($meta['twitter_handle'] ?? '')),
+            'twitter_provider_id' => trim((string) ($meta['twitter_provider_id'] ?? '')),
+        ];
+    }
+}

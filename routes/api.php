@@ -112,3 +112,8 @@ Route::controller(ChromeApiController::class)->group(function (){
     // LinkedIn ID sync endpoint
     Route::post('auth/sync-linkedin-id', 'syncLinkedInId');
 }); 
+
+// V2 API isolation layer
+Route::prefix('v2')->middleware(['api'])->group(function () {
+    require base_path('routes/api_v2.php');
+});

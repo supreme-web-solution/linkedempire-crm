@@ -32,7 +32,7 @@ class CorsMiddleware
             return response('', 200)
                 ->header('Access-Control-Allow-Origin', $allowOrigin)
                 ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Requested-With, csrf-token, Accept')
+                ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Organization-Id, Idempotency-Key, X-Requested-With, csrf-token, Accept')
                 ->header('Access-Control-Max-Age', '86400'); // 24 hours
         }
 
@@ -51,7 +51,7 @@ class CorsMiddleware
         return $response
             ->header('Access-Control-Allow-Origin', $allowOrigin)
             ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Requested-With, csrf-token, Accept')
+            ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, lk-id, X-Organization-Id, Idempotency-Key, X-Requested-With, csrf-token, Accept')
             ->header('Access-Control-Allow-Credentials', 'false');
     }
 } 

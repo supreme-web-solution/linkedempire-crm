@@ -11,7 +11,11 @@ use App\Models\SnLeadList;
 use App\Helpers\CustomQueryHelper;
 use App\Jobs\FetchAudienceEmailJob;
 use App\Jobs\FetchAudienceEmailBatchJob;
+use App\Jobs\FetchSnEmailBatchJob;
 use App\Models\User;
+use App\V2\Services\EmailEnrichmentLimiter;
+use App\V2\Services\LeadEnrichmentPersister;
+use App\V2\Services\LeadEnrichmentService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -145,30 +149,9 @@ class LeadController extends Controller
      * Get count of pending email fetch jobs for a user
      * Excludes jobs that have been stuck for more than 10 minutes
      */
-    private function getPendingEmailFetchCount($userId)
+    private function getPendingEmailFetchCount($userId): int
     {
-        // Get all audience_ids for this user
-        $userAudienceIds = Audience::where('user_id', $userId)->pluck('audience_id')->toArray();
-        
-        // Reset stuck jobs (pending/processing for more than 10 minutes)
-        $stuckCutoff = now()->subMinutes(10);
-        AudienceList::whereIn('audience_id', $userAudienceIds)
-            ->whereIn('email_fetch_status', ['pending', 'processing'])
-            ->where(function($query) use ($stuckCutoff) {
-                $query->where('email_fetch_attempted_at', '<', $stuckCutoff)
-                      ->orWhereNull('email_fetch_attempted_at');
-            })
-            ->update([
-                'email_fetch_status' => null,
-                'email_fetch_attempted_at' => null
-            ]);
-        
-        // Count AudienceList records with pending/processing status for this user's audiences
-        // Only count jobs that started within the last 10 minutes
-        return AudienceList::whereIn('audience_id', $userAudienceIds)
-            ->whereIn('email_fetch_status', ['pending', 'processing'])
-            ->where('email_fetch_attempted_at', '>=', $stuckCutoff)
-            ->count();
+        return app(EmailEnrichmentLimiter::class)->pendingJobCount((int) $userId);
     }
 
     /**
@@ -287,13 +270,16 @@ class LeadController extends Controller
 
     public function fetchEmail(Request $request, $listId)
     {
-        $src = $request->query('src');
-        
-        // Only support audience leads (src=aud) for now
+        $src = $request->query('src', 'aud');
+
+        if ($src === 'sn') {
+            return $this->enrichSnLead($request, $listId);
+        }
+
         if ($src !== 'aud') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Email fetching is only available for audience leads.'
+                'message' => 'Email fetching is only available for audience and Sales Navigator leads.'
             ], 400);
         }
 
@@ -366,31 +352,28 @@ class LeadController extends Controller
             ], 429);
         }
 
-        // Check concurrent limit (max 5 pending jobs per user)
-        $pendingCount = $this->getPendingEmailFetchCount($user->id);
-        if ($pendingCount >= 5) {
+        $pendingCount = app(EmailEnrichmentLimiter::class)->pendingJobCount($user->id);
+        $batchSize = app(EmailEnrichmentLimiter::class)->batchSize();
+        if ($pendingCount >= $batchSize) {
             return response()->json([
                 'status' => 'error',
-                'message' => "You have {$pendingCount} email scraping jobs in progress. Please come back in 45 minutes to allow other users to use the queue. This helps distribute the load across all users.",
+                'message' => "You have {$pendingCount} enrichment jobs in progress. Please wait before starting more.",
                 'concurrent_limit_reached' => true,
                 'pending_count' => $pendingCount
             ], 429);
         }
 
-        // Mark as pending immediately to prevent duplicate requests
         $audienceListItem->update([
             'email_fetch_attempted_at' => now(),
             'email_fetch_status' => 'pending'
         ]);
 
-        // Dispatch job to fetch email
         try {
-            FetchAudienceEmailJob::dispatch($audienceListItem->id, $publicIdentifier)
-                ->onQueue('phantombuster');
+            FetchAudienceEmailJob::dispatch($audienceListItem->id, $publicIdentifier);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Email fetch job queued. Please wait while we fetch the email.',
+                'message' => 'Enrichment job queued. Please wait while we fetch the email.',
                 'pending' => true
             ], 200);
         } catch (\Throwable $th) {
@@ -437,13 +420,16 @@ class LeadController extends Controller
 
     public function fetchEmailBatch(Request $request, $listId)
     {
-        $src = request()->query('src');
-        
-        // Only support audience leads (src=aud) for now
+        $src = request()->query('src', 'aud');
+
+        if ($src === 'sn') {
+            return $this->enrichSnBatch($request, $listId);
+        }
+
         if ($src !== 'aud') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Batch email fetching only supported for audience leads'
+                'message' => 'Batch email fetching only supported for audience and Sales Navigator leads'
             ], 400);
         }
 
@@ -501,32 +487,37 @@ class LeadController extends Controller
             ], 400);
         }
 
-        // Check daily limit
-        $this->checkAndResetDailyLimit($user);
         $profileCount = $itemsNeedingEmail->count();
-        
-        $dailyLimit = config('services.email_scraping.daily_limit_per_user', 100);
-        if ($user->daily_profile_email_scraping_count + $profileCount > $dailyLimit) {
-            $remaining = $dailyLimit - $user->daily_profile_email_scraping_count;
+        $capacity = app(EmailEnrichmentLimiter::class)->queueCapacity($user, $profileCount);
+
+        if (! ($capacity['allowed'] ?? false)) {
             return response()->json([
                 'status' => 'error',
-                'message' => "Daily limit reached. You can scrape {$remaining} more profiles today. Limit resets tomorrow.",
-                'daily_limit_reached' => true,
-                'remaining' => max(0, $remaining)
-            ], 400);
+                'message' => $capacity['message'],
+                'daily_limit_reached' => ($capacity['remaining_daily'] ?? 0) <= 0,
+                'remaining' => $capacity['remaining_daily'] ?? 0,
+                'pending_count' => $capacity['pending_jobs'] ?? 0,
+            ], ($capacity['pending_jobs'] ?? 0) >= app(EmailEnrichmentLimiter::class)->batchSize() ? 429 : 400);
         }
 
-        // Dispatch batch job
+        $idsToQueue = $itemsNeedingEmail->pluck('id')->take($capacity['max_queue_now'])->values()->all();
+
+        AudienceList::query()
+            ->whereIn('id', $idsToQueue)
+            ->update(['email_fetch_attempted_at' => now(), 'email_fetch_status' => 'pending']);
+
         try {
-            FetchAudienceEmailBatchJob::dispatch(
-                $itemsNeedingEmail->pluck('id')->toArray(),
-                $user->id
-            )->onQueue('phantombuster');
+            FetchAudienceEmailBatchJob::dispatchChunked($idsToQueue, $user->id);
+
+            $queued = count($idsToQueue);
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Batch email fetch job dispatched for {$profileCount} profile(s). Please refresh the page in a few moments.",
-                'profile_count' => $profileCount
+                'message' => $queued < $profileCount
+                    ? "Queued {$queued} of {$profileCount} profile(s) for enrichment (daily/batch limit)."
+                    : "Enrichment queued for {$queued} profile(s).",
+                'profile_count' => $queued,
+                'skipped' => $profileCount - $queued,
             ], 200);
         } catch (\Throwable $th) {
             Log::error('Failed to dispatch batch email fetch job', [
@@ -588,6 +579,193 @@ class LeadController extends Controller
                 'can_scrape' => true,
                 'reset_date' => null,
                 'error' => 'Failed to load daily limit'
+            ], 500);
+        }
+    }
+
+    private function enrichSnLead(Request $request, string $listId)
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        SnLeadList::query()
+            ->where('list_hash', $listId)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $request->validate([
+            'lead_id' => 'required|integer|exists:sn_leads,id',
+        ]);
+
+        $lead = SnLead::query()
+            ->where('id', $request->integer('lead_id'))
+            ->where('sn_list_id', $listId)
+            ->firstOrFail();
+
+        if (! empty($lead->email)) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Email already exists',
+                'email' => $lead->email,
+            ]);
+        }
+
+        if (! empty($lead->email_fetch_attempted_at)) {
+            if (in_array($lead->email_fetch_status, ['pending', 'processing'], true)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Enrichment is already in progress.',
+                    'already_pending' => true,
+                ], 409);
+            }
+
+            if ($lead->email_fetch_status === 'completed' && empty($lead->email)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Enrichment already attempted. No work email found.',
+                    'already_completed' => true,
+                ], 409);
+            }
+        }
+
+        $identifier = trim((string) ($lead->lid ?: $lead->sn_lid ?: ''));
+        if ($identifier === '') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Profile identifier not found. Cannot enrich.',
+            ], 400);
+        }
+
+        $this->checkAndResetDailyLimit($user);
+        $user->refresh();
+
+        $dailyLimit = (int) config('services.email_scraping.daily_limit_per_user', 100);
+        if ($user->daily_profile_email_scraping_count >= $dailyLimit) {
+            return response()->json([
+                'status' => 'error',
+                'message' => "Daily enrichment limit reached ({$dailyLimit} profiles/day).",
+            ], 429);
+        }
+
+        $lead->update(['email_fetch_attempted_at' => now(), 'email_fetch_status' => 'processing']);
+
+        try {
+            $enrichmentService = app(LeadEnrichmentService::class);
+            $persister = app(LeadEnrichmentPersister::class);
+            $lead->loadMissing('company');
+            $result = $enrichmentService->enrich($user, $enrichmentService->inputFromSnLead($lead));
+            $persister->persistSnLead($lead, $result, $user->id);
+        } catch (\Throwable $th) {
+            $lead->update(['email_fetch_status' => 'failed']);
+
+            Log::error('Failed to enrich SN lead', [
+                'sn_lead_id' => $lead->id,
+                'error' => $th->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to enrich: '.$th->getMessage(),
+            ], 500);
+        }
+
+        if (! $result->isSoftTimeout()) {
+            $user->increment('daily_profile_email_scraping_count');
+        }
+
+        $lead->refresh();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $lead->email
+                ? 'Email found via LinkedIn profile lookup.'
+                : 'Enrichment complete. No work email was found for this profile.',
+            'email' => $lead->email,
+            'completed' => empty($lead->email),
+        ]);
+    }
+
+    private function enrichSnBatch(Request $request, string $listId)
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        SnLeadList::query()
+            ->where('list_hash', $listId)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $request->validate([
+            'lead_ids' => 'required|array|min:1|max:50',
+            'lead_ids.*' => 'required|integer|exists:sn_leads,id',
+        ]);
+
+        $items = SnLead::query()
+            ->whereIn('id', $request->input('lead_ids', []))
+            ->where('sn_list_id', $listId)
+            ->get();
+
+        $needing = $items->filter(function (SnLead $lead) {
+            if (! empty($lead->email)) {
+                return false;
+            }
+
+            if (in_array($lead->email_fetch_status, ['pending', 'processing'], true)) {
+                return false;
+            }
+
+            if ($lead->email_fetch_status === 'completed') {
+                return false;
+            }
+
+            return true;
+        });
+
+        if ($needing->isEmpty()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'All selected profiles are already enriched or in progress.',
+            ], 400);
+        }
+
+        $profileCount = $needing->count();
+        $capacity = app(EmailEnrichmentLimiter::class)->queueCapacity($user, $profileCount);
+
+        if (! ($capacity['allowed'] ?? false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $capacity['message'],
+                'daily_limit_reached' => ($capacity['remaining_daily'] ?? 0) <= 0,
+                'remaining' => $capacity['remaining_daily'] ?? 0,
+                'pending_count' => $capacity['pending_jobs'] ?? 0,
+            ], ($capacity['pending_jobs'] ?? 0) >= app(EmailEnrichmentLimiter::class)->batchSize() ? 429 : 400);
+        }
+
+        $idsToQueue = $needing->pluck('id')->take($capacity['max_queue_now'])->values()->all();
+
+        SnLead::query()
+            ->whereIn('id', $idsToQueue)
+            ->update(['email_fetch_attempted_at' => now(), 'email_fetch_status' => 'pending']);
+
+        try {
+            FetchSnEmailBatchJob::dispatchChunked($idsToQueue, $user->id, $listId);
+
+            $queued = count($idsToQueue);
+
+            return response()->json([
+                'status' => 'success',
+                'message' => $queued < $profileCount
+                    ? "Queued {$queued} of {$profileCount} profile(s) for enrichment today."
+                    : "Queued enrichment for {$queued} profile(s).",
+                'profile_count' => $queued,
+                'skipped' => $profileCount - $queued,
+            ]);
+        } catch (\Throwable $th) {
+            Log::error('Failed to dispatch SN batch enrichment job', ['error' => $th->getMessage()]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to enrich: '.$th->getMessage(),
             ], 500);
         }
     }

@@ -105,9 +105,37 @@ trait CustomQueryHelper
                 $leads->appends($request->query());
             }
         }else {
-            $leads = SnLead::select(DB::raw("id, sn_list_id as list_hash, concat(first_name,' ',last_name) as name, email, headline, geolocation as location, lid as profileid, object_urn as member_urn, null as trackingId, degree as networkDistance, 'sn' as source, created_at"))
-                ->where('sn_list_id', $listId)
-                ->paginate(15);
+            $query = SnLead::select(DB::raw("id, sn_list_id as list_hash, concat(first_name,' ',last_name) as name, email, headline, geolocation as location, lid as profileid, object_urn as member_urn, null as trackingId, degree as networkDistance, 'sn' as source, email_fetch_status, email_fetch_attempted_at, created_at"))
+                ->where('sn_list_id', $listId);
+
+            switch ($emailFilter) {
+                case 'with_email':
+                    $query->whereNotNull('email')->where('email', '!=', '');
+                    break;
+                case 'without_email':
+                    $query->where(function ($q) {
+                        $q->whereNull('email')->orWhere('email', '=', '');
+                    })->where(function ($q) {
+                        $q->where('email_fetch_status', 'completed')
+                            ->orWhereNotNull('email_fetch_attempted_at');
+                    });
+                    break;
+                case 'not_found':
+                    $query->where('email_fetch_status', 'completed')
+                        ->where(function ($q) {
+                            $q->whereNull('email')->orWhere('email', '=', '');
+                        });
+                    break;
+                case 'not_fetched':
+                    $query->whereNull('email_fetch_status')
+                        ->whereNull('email_fetch_attempted_at');
+                    break;
+                case 'pending':
+                    $query->whereIn('email_fetch_status', ['pending', 'processing']);
+                    break;
+            }
+
+            $leads = $query->paginate(15);
             
             // Preserve query parameters in pagination links
             if ($request) {

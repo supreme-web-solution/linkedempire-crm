@@ -297,19 +297,18 @@
                         <label class="block text-sm font-medium text-gray-700 mb-2">
                             Post Content
                         </label>
-                        <textarea id="postContent" 
-                                  name="content" 
-                                  rows="8" 
-                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0077b5] @error('content') border-red-500 @enderror"
-                                  placeholder="Write your LinkedIn post here...">{{ old('content', $post->content) }}</textarea>
+                        <x-simple-text-editor
+                            id="postContent"
+                            name="content"
+                            :value="old('content', $post->content)"
+                            :rows="12"
+                            min-height="min-h-[280px]"
+                            placeholder="Write your LinkedIn post here, or generate with AI on the left."
+                            footer-hint="Plain text with line breaks — ready to paste into LinkedIn."
+                        />
                         @error('content')
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
-                        <div class="mt-2 flex justify-between items-center">
-                            <div class="text-sm text-gray-500">
-                                <span id="wordCount">{{ $post->word_count }}</span> words
-                            </div>
-                        </div>
                         
                         <!-- 🔥 NEW: Improve Post Action Buttons (Taplio-style) -->
                         <div id="improveActions" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
@@ -558,8 +557,45 @@
 // CSRF token from Blade to avoid relying on a meta tag
 const csrfToken = '{{ csrf_token() }}';
 
+function setPostContent(value, { stripMarkdown = true } = {}) {
+    if (window.SimpleTextEditor) {
+        window.SimpleTextEditor.setValue('postContent', value || '', { stripMarkdown });
+    } else {
+        const el = document.getElementById('postContent');
+        if (el) el.value = value || '';
+    }
+    toggleImprovePanelFromContent();
+}
+
+function getPostContent() {
+    return window.SimpleTextEditor
+        ? window.SimpleTextEditor.getValue('postContent')
+        : (document.getElementById('postContent')?.value || '');
+}
+
+function toggleImprovePanelFromContent() {
+    const content = getPostContent().trim();
+    const improveActions = document.getElementById('improveActions');
+    const showImproveBtn = document.getElementById('showImproveBtn');
+    if (!improveActions) return;
+    if (content.length > 0) {
+        improveActions.classList.remove('hidden');
+        showImproveBtn?.classList.add('hidden');
+    }
+}
+
+function scrollToPostContent() {
+    document.querySelector('[data-simple-text-editor] textarea#postContent, #postContent')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // 🔥 NEW: Load inspiration content from sessionStorage
 window.addEventListener('DOMContentLoaded', function() {
+    if (window.SimpleTextEditor) {
+        window.SimpleTextEditor.init();
+    }
+    toggleImprovePanelFromContent();
+
     const urlParams = new URLSearchParams(window.location.search);
     const fromInspiration = urlParams.get('from') === 'inspiration';
     
@@ -569,38 +605,28 @@ window.addEventListener('DOMContentLoaded', function() {
         const wasRemixed = sessionStorage.getItem('inspiration_remixed');
         
         if (inspirationContent) {
-            // Load content into editor
-            document.getElementById('postContent').value = inspirationContent;
-            document.getElementById('wordCount').textContent = str_word_count(inspirationContent);
+            setPostContent(inspirationContent, { stripMarkdown: false });
+            document.getElementById('hashtags').value = extractHashtags(inspirationContent);
+            toggleImprovePanelFromContent();
             
-            // Extract and load hashtags
-            const hashtags = extractHashtags(inspirationContent);
-            document.getElementById('hashtags').value = hashtags;
-            
-            // Show improve actions automatically
-            document.getElementById('improveActions').classList.remove('hidden');
-            document.getElementById('showImproveBtn').classList.add('hidden');
-            
-            // Show notification
             if (wasRemixed) {
                 showNotification('✨ AI-remixed content loaded! Ready to customize and post.', 'success');
             } else {
                 showNotification(`💡 Inspiration from ${inspirationAuthor || 'viral post'} loaded! Customize it to make it yours.`, 'success');
             }
             
-            // Clear sessionStorage
             sessionStorage.removeItem('inspiration_content');
             sessionStorage.removeItem('inspiration_author');
             sessionStorage.removeItem('inspiration_engagement');
             sessionStorage.removeItem('inspiration_remixed');
             
-            // Scroll to content
-            setTimeout(() => {
-                document.getElementById('postContent').scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 500);
+            setTimeout(scrollToPostContent, 500);
         }
     }
 });
+
+document.getElementById('postContent')?.addEventListener('input', toggleImprovePanelFromContent);
+document.getElementById('postContent')?.addEventListener('simple-text-editor:input', toggleImprovePanelFromContent);
 
 // Initialize post type sections on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -613,12 +639,6 @@ document.addEventListener('DOMContentLoaded', function() {
     } else if (postType === 'video') {
         videoSection.classList.remove('hidden');
     }
-});
-
-// Word count update
-document.getElementById('postContent').addEventListener('input', function() {
-    const wordCount = this.value.trim().split(/\s+/).filter(word => word.length > 0).length;
-    document.getElementById('wordCount').textContent = wordCount;
 });
 
 // Post type change handler
@@ -796,7 +816,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 🔥 NEW: Improve Post Function
 function improvePost(action) {
-    const content = document.getElementById('postContent').value.trim();
+    const content = getPostContent().trim();
     
     if (!content) {
         alert('Please enter some content first.');
@@ -825,8 +845,7 @@ function improvePost(action) {
         hideLoading();
         
         if (data.success) {
-            document.getElementById('postContent').value = data.content;
-            document.getElementById('wordCount').textContent = data.word_count;
+            setPostContent(data.content);
             
             // Show success notification
             showNotification('✨ Content improved successfully!', 'success');
@@ -941,13 +960,9 @@ document.getElementById('aiGenerateForm').addEventListener('submit', function(e)
                 displayMultipleDrafts(data.drafts);
             } else {
                 // Single draft (backward compatibility)
-                document.getElementById('postContent').value = data.content;
+                setPostContent(data.content);
                 document.getElementById('hashtags').value = data.hashtags;
-                document.getElementById('wordCount').textContent = data.word_count;
-                
-                // Show improve actions automatically
-                document.getElementById('improveActions').classList.remove('hidden');
-                document.getElementById('showImproveBtn').classList.add('hidden');
+                toggleImprovePanelFromContent();
             }
             
             // Start cooldown after successful generation (this will handle button state)
@@ -1020,19 +1035,11 @@ function displayMultipleDrafts(drafts) {
 
 // 🔥 NEW: Select Draft
 function selectDraft(draft) {
-    document.getElementById('postContent').value = draft.content;
+    setPostContent(draft.content);
     document.getElementById('hashtags').value = draft.hashtags || '';
-    document.getElementById('wordCount').textContent = draft.word_count;
-    
-    // Hide drafts container
     document.getElementById('draftsContainer').classList.add('hidden');
-    
-    // Show improve actions automatically
-    document.getElementById('improveActions').classList.remove('hidden');
-    document.getElementById('showImproveBtn').classList.add('hidden');
-    
-    // Scroll to content editor
-    document.getElementById('postContent').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toggleImprovePanelFromContent();
+    scrollToPostContent();
     
     // Show success notification
     showNotification('✅ Draft selected! Now improve it with AI actions below.', 'success');
@@ -1072,16 +1079,10 @@ function attachTemplateClickHandlers() {
                         console.log('✅ Loading template:', template.title);
                         
                         // Load template content
-                        document.getElementById('postContent').value = template.content;
+                        setPostContent(template.content, { stripMarkdown: false });
                         document.getElementById('hashtags').value = extractHashtags(template.content);
-                        document.getElementById('wordCount').textContent = str_word_count(template.content);
-                        
-                        // Auto-show improve actions
-                        document.getElementById('improveActions').classList.remove('hidden');
-                        document.getElementById('showImproveBtn').classList.add('hidden');
-                        
-                        // Scroll to content
-                        document.getElementById('postContent').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        toggleImprovePanelFromContent();
+                        scrollToPostContent();
                         
                         // Show success notification
                         showNotification('✅ Template loaded! Now customize it with variables or improve actions.', 'success');

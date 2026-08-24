@@ -76,8 +76,7 @@ class FlushPendingEmailBatches extends Command
                         
                         // Dispatch batch job
                         try {
-                            FetchAudienceEmailBatchJob::dispatch($audienceListIds, $userId)
-                                ->onQueue('phantombuster');
+                            FetchAudienceEmailBatchJob::dispatchChunked($audienceListIds, $userId);
                             
                             $flushedCount++;
                             $processedCount += count($audienceListIds);

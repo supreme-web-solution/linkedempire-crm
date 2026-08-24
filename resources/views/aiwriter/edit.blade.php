@@ -142,26 +142,23 @@ form-select focus:border-indigo-400
                     placeholder="Enter an idea or niche to generate content."
                     >{{$aicontent->idea}}</textarea>
                 </label>
-                <label class="block mt-4 text-sm">
-                    <span class="text-gray-700">Content</span>
-                    <textarea
-                    class="block w-full mt-1 text-sm form-textarea 
-                    focus:border-indigo-400 focus:outline-none rounded-md
-                    focus:shadow-outline-indigo
-                    rows="10"
-                    id="content"
-                    name="content"
-                    placeholder=""
-                    >{{$aicontent->contents}}</textarea>
-                </label>
-                <label class="mt-4 text-sm flex gap-4 justify-end ">
-                    <span class="text-gray-700 mt-2">Word count</span>
-                    <input class="text-sm w-[5rem] form-textarea
-                    focus:border-indigo-400 focus:outline-none rounded-md border-gray-200
-                    focus:shadow-outline-indigo
-                    type="number" id="words" name="words" value="{{$aicontent->word_counts}}" readonly>
-                </label>
-                <div class="bg-gray-50 px-4 py-3 mt-4 sm:flex sm:flex-row-reverse sm:px-6">
+                <div class="block mt-4 text-sm">
+                    <div class="mb-1 flex items-center justify-between">
+                        <span class="font-medium text-gray-700">Content</span>
+                        <span class="text-xs text-gray-500"><span id="contentWordCount">{{ $aicontent->word_counts ?? 0 }}</span> words</span>
+                    </div>
+                    <x-simple-text-editor
+                        id="content"
+                        name="content"
+                        :value="$aicontent->contents"
+                        :rows="12"
+                        min-height="min-h-[280px]"
+                        placeholder="Generated content appears here with line breaks. Edit, then copy or save."
+                        :required="true"
+                    />
+                </div>
+                <input type="hidden" id="words" name="words" value="{{ $aicontent->word_counts }}">
+                <div class="mt-5 flex flex-wrap justify-end gap-3">
                     <button type="button" 
                     class="inline-flex w-full justify-center rounded-md 
                     bg-indigo-600 px-3 py-2 text-sm font-semibold text-white 
@@ -189,13 +186,22 @@ form-select focus:border-indigo-400
 </div>
 
 <script>
-    $('#content').change(function() {
-        if($(this).val())
-            $(this).attr('disabled',false)
+    function syncContentWordCount() {
+        const count = window.SimpleTextEditor
+            ? window.SimpleTextEditor.getWordCount('content')
+            : ($('#content').val().trim() ? $('#content').val().trim().split(/\s+/).length : 0);
+        $('#words').val(count);
+        $('#contentWordCount').text(count);
+    }
 
-        let content = $(this).val().split(' ')
-        $('#words').val(content.length)
-    })
+    $('#content').on('input simple-text-editor:input', syncContentWordCount);
+
+    $(document).ready(function() {
+        if (window.SimpleTextEditor) {
+            window.SimpleTextEditor.init();
+        }
+        syncContentWordCount();
+    });
 
     $('#cold-mail').click(function() {
         $('#write').show()
@@ -273,9 +279,13 @@ form-select focus:border-indigo-400
             success: function(res) {
                 $('#generate').attr('disabled',false)
                 $('#save').attr('disabled',false)
-                $('#content').val(res.content)
+                if (window.SimpleTextEditor) {
+                    window.SimpleTextEditor.setValue('content', res.content || '');
+                } else {
+                    $('#content').val(res.content)
+                }
                 $('#words').val(res.words)
-                $('#content').attr('disabled',false)
+                syncContentWordCount()
                 $('.spinner').hide()
             },
             error: function(err, status, error) {

@@ -155,7 +155,7 @@
                     <div class="col-span-3 email-cell-{{$item->id}}">
                         @if($item->email)
                             {{$item->email}}
-                        @elseif(request()->query('src') == 'aud')
+                        @elseif(in_array(request()->query('src'), ['aud', 'sn'], true))
                             @if(!empty($item->email_fetch_status) && $item->email_fetch_status === 'pending')
                                 <span class="text-blue-500 text-xs font-medium">Pending...</span>
                             @elseif(!empty($item->email_fetch_attempted_at) && empty($item->email_fetch_status))
@@ -190,8 +190,10 @@
                                         style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" 
                                         onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" 
                                         onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';"
+                                        data-lead-id="{{$item->id}}"
+                                        data-list-src="{{ request()->query('src') }}"
                                         data-audience-list-id="{{$item->id}}"
-                                        data-list-id="{{$item->list_hash}}">
+                                        data-list-id="{{ request()->query('src') === 'sn' ? $listId : $item->list_hash }}">
                                         Get Email
                                     </button>
                                 @endif
@@ -331,33 +333,28 @@ $('.export').click(function() {
     })
 })
 
-// Batch email fetching for audience leads
+// Email enrichment (audience + Sales Navigator)
 $(document).ready(function() {
-    const listSrc = $('#list-src').val();
-    const listId = $('#list-hash').val();
-    
-    if (listSrc !== 'aud') {
-        return; // Only for audience leads
-    }
+    const pageListSrc = $('#list-src').val();
+    const pageListId = $('#list-hash').val();
 
-    // Load daily limit on page load
-    loadDailyLimit();
-
-
-    // Load daily limit
     function loadDailyLimit() {
+        if (!$('#daily-limit-info').length) {
+            return;
+        }
+
         $.ajax({
             url: '/leads/daily-limit',
             method: 'GET',
-            timeout: 10000, // 10 second timeout
+            timeout: 10000,
             success: function(response) {
                 if (response && typeof response.used !== 'undefined') {
                     $('#daily-limit-used').text(response.used || 0);
                     const percentage = ((response.used || 0) / (response.daily_limit || 100)) * 100;
                     $('#daily-limit-progress').css('width', percentage + '%');
-                    
+
                     const remaining = response.remaining || 0;
-                    
+
                     if (remaining <= 0) {
                         $('#daily-limit-status').html('<span class="text-red-600 font-semibold">Limit Reached</span>');
                         $('#daily-limit-progress').removeClass('bg-blue-600').addClass('bg-red-600');
@@ -369,22 +366,24 @@ $(document).ready(function() {
                         $('#daily-limit-progress').removeClass('bg-yellow-600 bg-red-600').addClass('bg-blue-600');
                     }
                 } else {
-                    console.error('Invalid daily limit response:', response);
                     $('#daily-limit-used').text('0');
                     $('#daily-limit-status').html('<span class="text-gray-500">Unable to load</span>');
                 }
             },
-            error: function(xhr, status, error) {
-                console.error('Daily limit AJAX error:', {xhr, status, error});
+            error: function() {
                 $('#daily-limit-used').text('0');
                 $('#daily-limit-status').html('<span class="text-gray-500">Error loading</span>');
             }
         });
     }
 
-    // Track pending email fetch count locally
+    if (pageListSrc === 'aud') {
+        loadDailyLimit();
+    }
+
     let pendingEmailFetchCount = {{ $pendingEmailFetchCount ?? 0 }};
     let pendingCountPollInterval = null;
+    const pendingBatchLimit = {{ (int) config('services.email_scraping.batch_size', 25) }};
 
     // Function to update pending count from backend
     function updatePendingCount() {
@@ -408,7 +407,7 @@ $(document).ready(function() {
 
     // Function to update all email button states based on pending count
     function updateEmailButtonStates() {
-        const pendingLimitReached = pendingEmailFetchCount >= 5;
+        const pendingLimitReached = pendingEmailFetchCount >= pendingBatchLimit;
         const tooltipText = `You have ${pendingEmailFetchCount} email scraping jobs in progress. Please come back in 45 minutes to allow other users to use the queue. This helps distribute the load across all users.`;
         
         // Update all "Get Email" buttons
@@ -476,24 +475,25 @@ $(document).ready(function() {
         }
     }
 
-    // Start polling when page loads and set initial state
-    $(document).ready(function() {
-        updateEmailButtonStates(); // Set initial state based on backend value
+    updateEmailButtonStates();
+    if (pageListSrc === 'aud') {
         startPendingCountPolling();
-    });
+    }
 
-    // Individual "Get Email" button click handler
     $(document).on('click', '.get-email-btn', function(e) {
         e.preventDefault();
         e.stopPropagation();
         
         const btn = $(this);
         const audienceListId = btn.data('audience-list-id');
+        const leadId = btn.data('lead-id');
         const listId = btn.data('list-id');
+        const listSrc = btn.data('list-src') || 'aud';
         
         // Check if limit is reached before making request
-        if (pendingEmailFetchCount >= 5) {
-            showNotification('error', `You have ${pendingEmailFetchCount} email scraping jobs in progress. Please come back in 45 minutes to allow other users to use the queue.`);
+        // Audience lists queue jobs; SN runs synchronously and is not gated by pending count
+        if (listSrc !== 'sn' && pendingEmailFetchCount >= pendingBatchLimit) {
+            showNotification('error', `You have ${pendingEmailFetchCount} enrichment jobs in progress. Please wait for the current batch to finish.`);
             return;
         }
         
@@ -502,16 +502,33 @@ $(document).ready(function() {
         const originalHtml = btn.html();
         btn.html('<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="ml-2">Processing...</span>');
         
+        const postData = { _token: '{{ csrf_token() }}' };
+        if (listSrc === 'sn') {
+            postData.lead_id = leadId;
+        } else {
+            postData.audience_list_id = audienceListId;
+        }
+
         $.ajax({
-            url: `/leads/${listId}/fetch-email?src=aud`,
+            url: `/leads/${listId}/fetch-email?src=${listSrc}`,
             method: 'POST',
-            data: {
-                audience_list_id: audienceListId,
-                _token: '{{ csrf_token() }}'
-            },
+            data: postData,
+            timeout: listSrc === 'sn' ? 120000 : 30000,
             success: function(response) {
                 if (response.status === 'success') {
-                    // Increment local pending count
+                    if (listSrc === 'sn') {
+                        if (response.email) {
+                            $(`.email-cell-${audienceListId}`).text(response.email);
+                        } else {
+                            $(`.email-cell-${audienceListId}`).html('<span class="text-gray-500 text-xs">No email found</span>');
+                        }
+                        btn.remove();
+                        showNotification('success', response.message || (response.email ? 'Email found.' : 'No email found for this profile.'));
+                        loadDailyLimit();
+                        return;
+                    }
+
+                    // Increment local pending count for queued jobs
                     pendingEmailFetchCount++;
                     updateEmailButtonStates();
                     
@@ -564,11 +581,17 @@ $(document).ready(function() {
 
     // Show notification
     function showNotification(type, message) {
-        const bgColor = type === 'success' ? '#10b981' : '#ef4444';
+        const colors = {
+            success: '#10b981',
+            error: '#ef4444',
+            info: '#0077b5',
+        };
+        const bgColor = colors[type] || colors.error;
+        const icon = type === 'success' ? '✓' : (type === 'info' ? 'ℹ' : '✕');
         const notification = $(`
             <div style="position: fixed; top: 20px; right: 20px; z-index: 99999; background: white; border-left: 4px solid ${bgColor}; padding: 16px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); min-width: 300px; max-width: 500px;">
                 <div class="flex items-center gap-3">
-                    <div style="color: ${bgColor}; font-size: 20px;">${type === 'success' ? '✓' : '✕'}</div>
+                    <div style="color: ${bgColor}; font-size: 20px;">${icon}</div>
                     <div class="text-gray-900 text-sm">${message}</div>
                 </div>
             </div>

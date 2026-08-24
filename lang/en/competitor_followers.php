@@ -2,7 +2,7 @@
 
 return [
     'title' => 'Competitor Active Followers',
-    'company_url_label' => 'LinkedIn Company URL',
+    'company_url_label' => 'LinkedIn Company or Profile URL',
     'session_cookie_label' => 'LinkedIn Session Cookie (li_at)',
     'session_cookie_help' => 'Paste your li_at cookie so the fetch can run under your LinkedIn session.',
     'user_agent_label' => 'Browser User Agent',
@@ -24,7 +24,7 @@ return [
     'th_profile' => 'Profile',
     'th_last_activity' => 'Last Activity',
     'fetch_started' => 'Fetching started. This may take a few minutes.',
-    'session_missing' => 'Add your LinkedIn session cookie on the Social Accounts page before running this fetch.'
+    'session_missing' => 'Connect LinkedIn via Integrations before harvesting.',
 ];
 
 

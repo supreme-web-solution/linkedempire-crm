@@ -11,7 +11,7 @@
                     $companyUrl = $meta['company_url'] ?? null;
                     $lastError = $meta['last_error'] ?? null;
                     $lastErrorType = $meta['last_error_type'] ?? null;
-                    $isSessionError = $lastErrorType === 'session_cookie';
+                    $isHarvestError = in_array($lastErrorType, ['harvest_error', 'session_cookie'], true);
                 @endphp
                 @if($companyUrl)
                     <a href="{{ $companyUrl }}" target="_blank" rel="noopener noreferrer" class="text-sm text-[#0077b5] hover:text-[#005885] hover:underline inline-flex items-center gap-1">
@@ -28,20 +28,20 @@
                 <a href="{{ route('competitor-followers.export', $audience->id) }}" class="inline-flex items-center justify-center rounded text-white px-4 py-2 transition-all" style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';">{{ __('competitor_followers.export') }}</a>
             </div>
         </div>
-        @if($isSessionError && $lastError)
+        @if($isHarvestError && $lastError)
             <div class="mt-4 rounded-lg border border-orange-300 bg-orange-50 p-4">
                 <div class="flex items-start gap-3">
                     <svg class="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                     </svg>
                     <div class="flex-1">
-                        <h3 class="font-semibold text-orange-900 mb-1">LinkedIn Session Cookie Error</h3>
+                        <h3 class="font-semibold text-orange-900 mb-1">Harvest failed</h3>
                         <p class="text-sm text-orange-800 mb-3">{{ $lastError }}</p>
                         <a href="{{ route('social-account.index') }}" class="inline-flex items-center gap-2 text-sm font-medium text-orange-700 hover:text-orange-900 underline">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                             </svg>
-                            Update LinkedIn Session Cookie
+                            Reconnect LinkedIn
                         </a>
                     </div>
                 </div>

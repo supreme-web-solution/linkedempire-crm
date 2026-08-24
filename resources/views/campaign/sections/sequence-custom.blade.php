@@ -360,6 +360,18 @@ let dbSequenceNode = @json($dbSequenceNode);
 let dbSequenceLink = @json($dbSequenceLink);
 let nodeDataModel, linkDataModel;
 
+function stripRetiredCallNodes(nodes, links) {
+    const list = Array.isArray(nodes) ? nodes : [];
+    const callKeys = new Set(list.filter((n) => n && n.value === 'call').map((n) => n.key));
+    if (!callKeys.size) {
+        return { nodes: list, links: Array.isArray(links) ? links : [] };
+    }
+    return {
+        nodes: list.filter((n) => n.value !== 'call'),
+        links: (Array.isArray(links) ? links : []).filter((l) => !callKeys.has(l.from) && !callKeys.has(l.to)),
+    };
+}
+
 {{-- Commented out - Book a call will be built as a standalone feature --}}
 {{-- const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company." --}}
 
@@ -391,7 +403,6 @@ const followNodes = [
 const messageNodes = [
     {key: 0, icon: "\uf27a", label: "Message",  type: 'action', value: 'message',       color: "#5560E5", stroke: "white",  loc: "50 0", message: '', pos: 'center', runStatus: false},
     {key: 1, icon: "\uf017", label: "1 day",    type: 'delay',  value: 1, time: 'days', color: "#F3F4F6", stroke: "black",  loc: "50 60", pos: 'center', runStatus: false},
-    {key: 2, icon: "\uf05e", label: "End of sequence", type: 'end', value: 'end', color: "#9ca3af", stroke: "white", loc: "50 120", pos: 'center', runStatus: false},
 ]
 const endorseNodes = [
     {key: 0, icon: "\uf058", label: "Endorse skills", type: 'action', value: 'endorse',       color: "#5560E5", stroke: "white",  loc: "50 0", totalSkills: 1, pos: 'center', runStatus: false},
@@ -413,8 +424,9 @@ const addActionNodes = [
 ] --}}
 
 if(dbSequenceType === 'custom' && dbSequenceNode.length > 0 && dbSequenceLink.length > 0){
-    nodeDataModel = dbSequenceNode
-    linkDataModel = dbSequenceLink
+    const cleaned = stripRetiredCallNodes(dbSequenceNode, dbSequenceLink);
+    nodeDataModel = cleaned.nodes
+    linkDataModel = cleaned.links
 }else {
     nodeDataModel = [{
         key: 0, 
@@ -750,7 +762,7 @@ const init = () => {
 
                 for(const [i, item] of messageNodes.entries()){
                     newNode = {
-                        key: i == 0 ? lastNodekeys['lastKey']+1 : i == 1 ? lastNodekeys['lastKey']+2 : lastNodekeys['lastKey']+3,
+                        key: i == 0 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
                         icon: item.icon,
                         label: item.label,
                         type: item.type,
@@ -759,7 +771,7 @@ const init = () => {
                         color: item.color,
                         stroke: item.stroke,
                         message: item?.message || null,
-                        loc: i == 0 ? `150 ${loc}` : i == 1 ? `150 ${loc + 60}` : `150 ${loc + 120}`,
+                        loc: i == 0 ? `150 ${loc}` : `150 ${loc + 60}`,
                         pos: 'right', 
                         runStatus: false
                     }
@@ -774,8 +786,8 @@ const init = () => {
                     nodeDataModel.push(newNode)
 
                     linkDataModel.push({
-                        from: i == 0 ? lastNodekeys['rightKey'] : i == 1 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
-                        to: i == 0 ? lastNodekeys['lastKey']+1 : i == 1 ? lastNodekeys['lastKey']+2 : lastNodekeys['lastKey']+3,
+                        from: i == 0 ? lastNodekeys['rightKey'] : lastNodekeys['lastKey']+1,
+                        to: i == 0 ? lastNodekeys['lastKey']+1 : lastNodekeys['lastKey']+2,
                         fromSpot: "Bottom",
                         toSpot: "Top"
                     })
@@ -787,12 +799,6 @@ const init = () => {
             linkDataModel.push({
                 from: 0,
                 to: 1,
-                fromSpot: "Bottom",
-                toSpot: "Top"
-            })
-            linkDataModel.push({
-                from: 1,
-                to: 2,
                 fromSpot: "Bottom",
                 toSpot: "Top"
             })
@@ -850,30 +856,6 @@ const init = () => {
                 toSpot: "Top"
             }
             linkDataModel.push(newLink1)
-            
-            // Add end node after delay
-            let newNode2 = {
-                key: lastNodekeys.lastKey +3,
-                icon: messageNodes[2].icon,
-                label: messageNodes[2].label,
-                type: messageNodes[2].type,
-                value: messageNodes[2].value,
-                time: messageNodes[2]?.time || null,
-                color: messageNodes[2].color,
-                stroke: messageNodes[2].stroke,
-                message: messageNodes[2]?.message || null,
-                loc: `50 ${loc +120}`,
-                pos: 'center',
-                runStatus: false
-            }
-            nodeDataModel.push(newNode2)
-            let newLink2 = {
-                from: lastNodekeys.centerKey +2,
-                to: lastNodekeys.lastKey +3,
-                fromSpot: "Bottom",
-                toSpot: "Top"
-            }
-            linkDataModel.push(newLink2)
         }
         toogleDisableActionSide([0,1,2,3,4,5], 'disable')
         setAddActionNodes()

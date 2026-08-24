@@ -15,6 +15,10 @@ use App\Models\SnLead;
 use App\Http\Resources\CampaignResource;
 use App\Helpers\CampaignHelper;
 use App\Models\AudienceList;
+use App\V2\Campaign\CampaignLaunchService;
+use App\V2\Campaign\CampaignLinkedInGuard;
+use App\V2\Campaign\CampaignStatusService;
+use App\V2\Campaign\LegacyCampaignStatsService;
 use Illuminate\Support\Facades\DB;
 
 class CampaignController extends Controller
@@ -24,7 +28,7 @@ class CampaignController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(LegacyCampaignStatsService $campaignStats)
     {
         $userId = auth()->user()->id;
 
@@ -68,97 +72,8 @@ class CampaignController extends Controller
                 }
             }
             $campaigns[$key]['total_leads'] = $totalList;
-
-            // Acceptance rate - Show percentage of invites sent (not accepted)
-            $leadgen = CampaignLeadgenRunning::select('campaign_id', 'accept_status', 'status_last_id')
-                ->where('campaign_id', $campaign->id)
-                ->get();
-            $totalLeadgen = $leadgen->count();
-            $acceptRate = 0;
-
-                    // Debug: Log all records for this campaign
-        logger("🔍 Campaign {$campaign->id} - All leadgen records:", [
-            'campaign_id' => $campaign->id,
-            'total_records' => $totalLeadgen,
-            'records' => $leadgen->toArray()
-        ]);
-        
-        // Also log the raw database query to see what's actually stored
-        $rawRecords = DB::table('campaign_leadgen_running')
-            ->where('campaign_id', $campaign->id)
-            ->get(['campaign_id', 'lead_id', 'accept_status', 'status_last_id', 'current_node_key', 'next_node_key']);
-        logger("🔍 Campaign {$campaign->id} - Raw database records:", [
-            'campaign_id' => $campaign->id,
-            'raw_records' => $rawRecords->toArray()
-        ]);
-
-            if ($totalLeadgen > 0) {
-                $totalInvitesSent = 0;
-                $totalAccepted = 0;
-                
-                foreach ($leadgen as $leadgen) {
-                    // Debug: Log what we're checking
-                    // status_last_id values: 1 = initial, 2 = sent, 3 = accepted, 4 = error
-                    // Count as "invite sent" if status_last_id is 2 (sent) OR 3 (accepted)
-                    $isInviteSent = false;
-                    $isAccepted = false;
-                    
-                    // Check if invite was sent (status_last_id = 2 or 3)
-                    if ($leadgen->status_last_id == 2 || $leadgen->status_last_id == 3) {
-                        $isInviteSent = true;
-                    }
-                    
-                    // Method 2: Fallback - check if current_node_key is not 0 (indicates processing)
-                    if (!$isInviteSent && $leadgen->current_node_key && $leadgen->current_node_key != 0) {
-                        $isInviteSent = true;
-                        logger("🔍 Using fallback method - current_node_key indicates processing");
-                    }
-                    
-                    // Count accepted invites - use both accept_status = 1 AND status_last_id = 3 for accuracy
-                    if ($leadgen->accept_status == 1 || $leadgen->status_last_id == 3) {
-                        $isAccepted = true;
-                    }
-                    
-                    // Count invites that have been sent (only if explicitly marked as sent)
-                    if ($isInviteSent) {
-                        $totalInvitesSent += 1;
-                    }
-                    // Count accepted invites
-                    if ($isAccepted) {
-                        $totalAccepted += 1;
-                    }
-                    
-                    // Debug: Log each record check
-                    logger("🔍 Record check:", [
-                        'campaign_id' => $campaign->id,
-                        'status_last_id' => $leadgen->status_last_id,
-                        'status_last_id_type' => gettype($leadgen->status_last_id),
-                        'accept_status' => $leadgen->accept_status,
-                        'current_node_key' => $leadgen->current_node_key,
-                        'is_invite_sent' => $isInviteSent,
-                        'is_accepted' => $isAccepted,
-                        'total_invites_sent_so_far' => $totalInvitesSent,
-                        'total_accepted_so_far' => $totalAccepted
-                    ]);
-                }
-                
-                // Calculate actual acceptance rate (accepted / sent)
-                if ($totalInvitesSent > 0) {
-                    $acceptRate = round(($totalAccepted / $totalInvitesSent) * 100);
-                }
-                
-                // Log for debugging
-                logger("📊 Campaign {$campaign->id} accept rate calculation:", [
-                    'campaign_id' => $campaign->id,
-                    'total_leadgen' => $totalLeadgen,
-                    'total_invites_sent' => $totalInvitesSent,
-                    'total_accepted' => $totalAccepted,
-                    'accept_rate' => $acceptRate
-                ]);
-            } else {
-                logger("⚠️ Campaign {$campaign->id} - No leadgen records found");
-            }
-            $campaigns[$key]['accept_rate'] = $acceptRate;
+            $campaigns[$key]['accept_rate'] = $this->resolveAcceptRate((int) $campaign->id, $userId, $campaignStats);
+            $campaigns[$key]['status'] = $campaignStats->displayStatus($campaign, $userId);
         }
 
         // Calculate campaign statistics
@@ -264,7 +179,7 @@ class CampaignController extends Controller
     /**
      * Get real-time campaign status updates for AJAX requests
      */
-    public function getCampaignStatusUpdates(Request $request)
+    public function getCampaignStatusUpdates(Request $request, LegacyCampaignStatsService $campaignStats)
     {
         try {
             $user = auth()->user();
@@ -323,35 +238,8 @@ class CampaignController extends Controller
                     }
                 }
                 $campaigns[$key]['total_leads'] = $totalList;
-
-                // Acceptance rate - Show percentage of invites sent (not accepted)
-                $leadgen = CampaignLeadgenRunning::select('campaign_id', 'accept_status', 'status_last_id')
-                    ->where('campaign_id', $campaign->id)
-                    ->get();
-                $totalLeadgen = $leadgen->count();
-                $acceptRate = 0;
-
-                if ($totalLeadgen > 0) {
-                    $totalInvitesSent = 0;
-                    $totalAccepted = 0;
-                    
-                    foreach ($leadgen as $leadgenItem) {
-                        // Count invites that have been sent (status_last_id = 2 means sent)
-                        if (isset($leadgenItem->status_last_id) && $leadgenItem->status_last_id == 2) {
-                            $totalInvitesSent += 1;
-                        }
-                        // Count accepted invites
-                        if (isset($leadgenItem->accept_status) && $leadgenItem->accept_status == 1) {
-                            $totalAccepted += 1;
-                        }
-                    }
-                    
-                    // Calculate actual acceptance rate (accepted / sent)
-                    if ($totalInvitesSent > 0) {
-                        $acceptRate = round(($totalAccepted / $totalInvitesSent) * 100);
-                    }
-                }
-                $campaigns[$key]['accept_rate'] = $acceptRate;
+                $campaigns[$key]['accept_rate'] = $this->resolveAcceptRate((int) $campaign->id, $userId, $campaignStats);
+                $campaigns[$key]['status'] = $campaignStats->displayStatus($campaign, $userId);
             }
 
             return response()->json([
@@ -483,6 +371,12 @@ class CampaignController extends Controller
                     $has_call = true;
             }
 
+            // Book-a-call was retired from campaign sequences.
+            // If a Call Manager is added later, it must follow the v2 standalone approach.
+            if ($has_call) {
+                $has_call = false;
+            }
+
             if ($has_call) {
                 // Get total leads
                 $clist = $this->getCampaignList($data['cid'], $userId);
@@ -542,18 +436,100 @@ class CampaignController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, string $id, CampaignLaunchService $launch, CampaignLinkedInGuard $linkedInGuard)
     {
         $campaign = Campaign::findOrFail($id);
+        $user = $request->user();
+        $linkedInDisconnected = $linkedInGuard->isUserDisconnected((int) $user->id);
 
         $campaign->update([
             'name' => $request->campaign_name,
-            'status' => 'active',
+            'status' => $linkedInDisconnected ? 'draft' : 'active',
             'process_condition' => json_encode($request->process_condition)
         ]);
 
-        notify()->success('Campaign saved successfully');
+        if ($linkedInDisconnected) {
+            notify()->warning('Campaign saved. Connect LinkedIn via Integrations before it can run.');
+            return redirect()->route('campaign');
+        }
+
+        if (CampaignList::where('campaign_id', $id)->count() === 0) {
+            notify()->warning('Campaign saved. Add at least one lead list before launching.');
+            return redirect()->route('campaign');
+        }
+
+        $result = $launch->launchFromLegacy($campaign->fresh(), $user);
+
+        if ($result['blocked'] ?? false) {
+            notify()->error($result['message'] ?? 'Campaign could not be launched.');
+        } else {
+            notify()->success('Campaign launched — leads are syncing and will run via Unipile shortly.');
+        }
+
         return redirect()->route('campaign');
+    }
+
+    public function activate(string $id, CampaignLaunchService $launch, CampaignLinkedInGuard $linkedInGuard, CampaignStatusService $statusService)
+    {
+        $campaign = Campaign::query()
+            ->where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        $displayStatus = app(LegacyCampaignStatsService::class)->displayStatus($campaign, (int) auth()->id());
+
+        if (! $statusService->canRun($displayStatus)) {
+            return redirect()->route('campaign')->with(
+                'error',
+                'Finish setting up the campaign before running it.'
+            );
+        }
+
+        if ($linkedInGuard->isUserDisconnected((int) auth()->id())) {
+            return redirect()->route('campaign')->with(
+                'error',
+                'Your LinkedIn account is disconnected. Reconnect on Integrations before launching this campaign.'
+            );
+        }
+
+        if (CampaignList::where('campaign_id', $id)->count() === 0) {
+            return back()->withErrors(['campaign' => 'Add at least one lead list before launching.']);
+        }
+
+        $result = $launch->launchFromLegacy($campaign, auth()->user());
+
+        if ($result['blocked'] ?? false) {
+            return redirect()->route('campaign')->with('error', $result['message'] ?? 'Campaign could not be launched.');
+        }
+
+        return redirect()->route('campaign')->with(
+            'success',
+            'Campaign relaunched — leads are syncing in the background via Unipile.'
+        );
+    }
+
+    public function pause(string $id, CampaignStatusService $statusService)
+    {
+        $campaign = Campaign::query()
+            ->where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        $displayStatus = app(LegacyCampaignStatsService::class)->displayStatus($campaign, (int) auth()->id());
+
+        if (! $statusService->canPause($displayStatus)) {
+            return redirect()->route('campaign')->with(
+                'error',
+                'Only running or preparing campaigns can be paused.'
+            );
+        }
+
+        $statusService->pause($campaign, auth()->user());
+
+        return redirect()->route('campaign')->with(
+            'success',
+            'Campaign paused. Click Run when you are ready to continue.'
+        );
     }
 
     /**
@@ -1161,6 +1137,36 @@ class CampaignController extends Controller
         }
 
         return null;
+    }
+
+    private function resolveAcceptRate(int $campaignId, int $userId, LegacyCampaignStatsService $campaignStats): int
+    {
+        $v2Rate = $campaignStats->acceptRate($campaignId, $userId);
+        if ($v2Rate !== null) {
+            return $v2Rate;
+        }
+
+        $leadgen = CampaignLeadgenRunning::query()
+            ->where('campaign_id', $campaignId)
+            ->get(['accept_status', 'status_last_id']);
+
+        if ($leadgen->isEmpty()) {
+            return 0;
+        }
+
+        $totalInvitesSent = 0;
+        $totalAccepted = 0;
+
+        foreach ($leadgen as $row) {
+            if (in_array((string) $row->status_last_id, ['2', '3'], true)) {
+                $totalInvitesSent++;
+            }
+            if ((int) $row->accept_status === 1 || (string) $row->status_last_id === '3') {
+                $totalAccepted++;
+            }
+        }
+
+        return $totalInvitesSent > 0 ? (int) round(($totalAccepted / $totalInvitesSent) * 100) : 0;
     }
 }
 

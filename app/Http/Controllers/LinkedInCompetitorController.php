@@ -7,8 +7,9 @@ use App\Jobs\FetchAudienceEmailJob;
 use App\Jobs\FetchAudienceEmailBatchJob;
 use App\Models\Audience;
 use App\Models\AudienceList;
-use App\Models\Integration;
 use App\Models\User;
+use App\Models\V2IntegrationAccount;
+use App\V2\Services\EmailEnrichmentLimiter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -101,10 +102,7 @@ class LinkedInCompetitorController extends Controller
             
         }
 
-        $hasLinkedInSession = Integration::where('user_id', $user->id)
-            ->where('oauth_provider', 'linkedin')
-            ->whereNotNull('linkedin_session_cookie')
-            ->exists();
+        $hasLinkedInSession = (bool) V2IntegrationAccount::activeUnipileAccountId($user->id);
 
         return view('competitor_followers.index', compact('audiences', 'hasLinkedInSession'));
     }
@@ -112,105 +110,127 @@ class LinkedInCompetitorController extends Controller
     public function fetch(Request $request)
     {
         $data = $request->validate([
-            'company_url' => ['required', 'url'],
+            'company_url' => [
+                'required',
+                'url',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $path = (string) parse_url((string) $value, PHP_URL_PATH);
+                    if (
+                        ! preg_match('~/company/[^/?#]+~i', $path)
+                        && ! preg_match('~/in/[^/?#]+~i', $path)
+                    ) {
+                        $fail('Paste a LinkedIn company URL (linkedin.com/company/...) or profile URL (linkedin.com/in/...).');
+                    }
+                },
+            ],
         ]);
 
         $user = Auth::user();
 
-        $integration = Integration::where('user_id', $user->id)
-            ->where('oauth_provider', 'linkedin')
-            ->whereNotNull('linkedin_session_cookie')
-            ->latest('linkedin_session_verified_at')
-            ->first();
-
-        if (!$integration) {
+        if (! V2IntegrationAccount::activeUnipileAccountId($user->id)) {
             return redirect()
                 ->route('competitor-followers.index')
                 ->with('error', __('competitor_followers.session_missing'));
         }
 
-        // Extract company name from URL for better naming
-        $companySlug = null;
+        $sourceType = 'company';
         $companyName = 'Competitor Followers';
         $parsedUrl = parse_url($data['company_url']);
         if (isset($parsedUrl['path'])) {
-            // Extract company name from path like /company/microsoft
             if (preg_match('/\/company\/([^\/\?]+)/', $parsedUrl['path'], $matches)) {
-                $companySlug = $matches[1];
-                $companyName = ucfirst($companySlug) . ' - Active Engagers';
-            } elseif ($parsedUrl['host']) {
-                $companyName = str_replace('www.', '', $parsedUrl['host']) . ' - Active Engagers';
+                $companyName = ucfirst(rawurldecode($matches[1])).' - Active Engagers';
+            } elseif (preg_match('/\/in\/([^\/\?]+)/', $parsedUrl['path'], $matches)) {
+                $sourceType = 'person';
+                $companyName = $this->humanizeProfileSlug(rawurldecode($matches[1])).' - Active Engagers';
+            } elseif (! empty($parsedUrl['host'])) {
+                $companyName = str_replace('www.', '', $parsedUrl['host']).' - Active Engagers';
             }
         }
 
-        // Normalize company URL (remove trailing slash, query params)
-        $normalizedUrl = rtrim(parse_url($data['company_url'], PHP_URL_SCHEME) . '://' . parse_url($data['company_url'], PHP_URL_HOST) . parse_url($data['company_url'], PHP_URL_PATH), '/');
+        $normalizedUrl = rtrim(
+            parse_url($data['company_url'], PHP_URL_SCHEME).'://'.
+            parse_url($data['company_url'], PHP_URL_HOST).
+            parse_url($data['company_url'], PHP_URL_PATH),
+            '/'
+        );
 
-        // Check if an audience already exists for this company URL
         $existingAudience = Audience::where('user_id', $user->id)
             ->where('source', 'linkedin_company_followers')
             ->where('tag', 'competitor_active_followers')
             ->get()
-            ->first(function($aud) use ($normalizedUrl) {
+            ->first(function ($aud) use ($normalizedUrl) {
                 $meta = $aud->source_meta ? json_decode($aud->source_meta, true) : null;
                 if ($meta && isset($meta['company_url'])) {
-                    $existingUrl = rtrim(parse_url($meta['company_url'], PHP_URL_SCHEME) . '://' . parse_url($meta['company_url'], PHP_URL_HOST) . parse_url($meta['company_url'], PHP_URL_PATH), '/');
+                    $existingUrl = rtrim(
+                        parse_url($meta['company_url'], PHP_URL_SCHEME).'://'.
+                        parse_url($meta['company_url'], PHP_URL_HOST).
+                        parse_url($meta['company_url'], PHP_URL_PATH),
+                        '/'
+                    );
+
                     return $existingUrl === $normalizedUrl;
                 }
+
                 return false;
             });
 
         if ($existingAudience) {
-            // Use existing audience - update name if needed
             if ($existingAudience->audience_name !== $companyName) {
                 $existingAudience->audience_name = $companyName;
                 $existingAudience->save();
             }
             $audience = $existingAudience;
-            
+
             Log::info('Using existing competitor audience', [
                 'audience_id' => $audience->audience_id,
-                'company_url' => $data['company_url']
+                'company_url' => $data['company_url'],
             ]);
         } else {
-            // Create new audience
             $audience = Audience::create([
                 'audience_name' => $companyName,
-                'audience_id' => now()->timestamp . $user->id,
+                'audience_id' => now()->timestamp.$user->id,
                 'audience_type' => 'LI',
                 'user_id' => $user->id,
                 'tag' => 'competitor_active_followers',
                 'source' => 'linkedin_company_followers',
                 'source_meta' => json_encode([
-                    'company_url' => $normalizedUrl
-                ])
+                    'company_url' => $normalizedUrl,
+                    'source_type' => $sourceType,
+                ]),
             ]);
-            
+
             Log::info('Created new competitor audience', [
                 'audience_id' => $audience->audience_id,
-                'company_url' => $normalizedUrl
+                'company_url' => $normalizedUrl,
             ]);
         }
 
-        // Set initial status to pending
         $meta = json_decode($audience->source_meta, true) ?? [];
+        $meta['company_url'] = $normalizedUrl;
+        $meta['source_type'] = $sourceType;
         $meta['fetch_status'] = 'pending';
         $meta['fetch_started_at'] = now()->toIso8601String();
-        $meta['fetch_progress'] = '⏳ Queued and ready to go...';
+        $meta['fetch_progress'] = 'Queued and ready to go...';
         $audience->source_meta = json_encode($meta);
         $audience->save();
 
-        // Dispatch job to default queue (handled by supervisor-1 in Horizon)
         FetchCompetitorFollowersJob::dispatch(
             $user->id,
             $audience->id,
             $data['company_url'],
-            $integration->linkedin_session_cookie,
-            $integration->linkedin_user_agent ?? config('services.phantombuster.linkedin_user_agent')
+            '',
+            ''
         )->onQueue('default');
 
         return redirect()->route('competitor-followers.index')
             ->with('status', __('competitor_followers.fetch_started'));
+    }
+
+    private function humanizeProfileSlug(string $slug): string
+    {
+        $slug = str_replace(['-', '_'], ' ', $slug);
+
+        return ucwords(trim($slug));
     }
 
     public function show(Request $request, $audienceId)
@@ -264,30 +284,9 @@ class LinkedInCompetitorController extends Controller
      * Get count of pending email fetch jobs for a user
      * Excludes jobs that have been stuck for more than 10 minutes
      */
-    private function getPendingEmailFetchCount($userId)
+    private function getPendingEmailFetchCount($userId): int
     {
-        // Get all audience_ids for this user
-        $userAudienceIds = Audience::where('user_id', $userId)->pluck('audience_id')->toArray();
-        
-        // Reset stuck jobs (pending/processing for more than 10 minutes)
-        $stuckCutoff = now()->subMinutes(10);
-        AudienceList::whereIn('audience_id', $userAudienceIds)
-            ->whereIn('email_fetch_status', ['pending', 'processing'])
-            ->where(function($query) use ($stuckCutoff) {
-                $query->where('email_fetch_attempted_at', '<', $stuckCutoff)
-                      ->orWhereNull('email_fetch_attempted_at');
-            })
-            ->update([
-                'email_fetch_status' => null,
-                'email_fetch_attempted_at' => null
-            ]);
-        
-        // Count AudienceList records with pending/processing status for this user's audiences
-        // Only count jobs that started within the last 10 minutes
-        return AudienceList::whereIn('audience_id', $userAudienceIds)
-            ->whereIn('email_fetch_status', ['pending', 'processing'])
-            ->where('email_fetch_attempted_at', '>=', $stuckCutoff)
-            ->count();
+        return app(EmailEnrichmentLimiter::class)->pendingJobCount((int) $userId);
     }
 
     /**
@@ -409,27 +408,24 @@ class LinkedInCompetitorController extends Controller
             ], 429);
         }
 
-        // Check concurrent limit (max 5 pending jobs per user)
-        $pendingCount = $this->getPendingEmailFetchCount($user->id);
-        if ($pendingCount >= 5) {
+        $pendingCount = app(EmailEnrichmentLimiter::class)->pendingJobCount($user->id);
+        $batchSize = app(EmailEnrichmentLimiter::class)->batchSize();
+        if ($pendingCount >= $batchSize) {
             return response()->json([
                 'status' => 'error',
-                'message' => "You have {$pendingCount} email scraping jobs in progress. Please come back in 45 minutes to allow other users to use the queue. This helps distribute the load across all users.",
+                'message' => "You have {$pendingCount} enrichment jobs in progress. Please wait for the current batch to finish.",
                 'concurrent_limit_reached' => true,
                 'pending_count' => $pendingCount
             ], 429);
         }
 
-        // Mark as pending immediately to prevent duplicate requests
         $audienceListItem->update([
             'email_fetch_attempted_at' => now(),
             'email_fetch_status' => 'pending'
         ]);
 
-        // Dispatch job to fetch email
         try {
-            FetchAudienceEmailJob::dispatch($audienceListItem->id, $publicIdentifier)
-                ->onQueue('phantombuster');
+            FetchAudienceEmailJob::dispatch($audienceListItem->id, $publicIdentifier);
 
             return response()->json([
                 'status' => 'success',
@@ -525,32 +521,33 @@ class LinkedInCompetitorController extends Controller
             ], 400);
         }
 
-        // Check daily limit
-        $this->checkAndResetDailyLimit($user);
         $profileCount = $itemsNeedingEmail->count();
-        
-        $dailyLimit = config('services.email_scraping.daily_limit_per_user', 100);
-        if ($user->daily_profile_email_scraping_count + $profileCount > $dailyLimit) {
-            $remaining = $dailyLimit - $user->daily_profile_email_scraping_count;
+        $capacity = app(EmailEnrichmentLimiter::class)->queueCapacity($user, $profileCount);
+
+        if (! ($capacity['allowed'] ?? false)) {
             return response()->json([
                 'status' => 'error',
-                'message' => "Daily limit reached. You can scrape {$remaining} more profiles today. Limit resets tomorrow.",
-                'daily_limit_reached' => true,
-                'remaining' => max(0, $remaining)
+                'message' => $capacity['message'],
+                'daily_limit_reached' => ($capacity['remaining_daily'] ?? 0) <= 0,
+                'remaining' => $capacity['remaining_daily'] ?? 0,
             ], 400);
         }
 
-        // Dispatch batch job
+        $idsToQueue = $itemsNeedingEmail->pluck('id')->take($capacity['max_queue_now'])->values()->all();
+
+        AudienceList::query()
+            ->whereIn('id', $idsToQueue)
+            ->update(['email_fetch_attempted_at' => now(), 'email_fetch_status' => 'pending']);
+
         try {
-            FetchAudienceEmailBatchJob::dispatch(
-                $itemsNeedingEmail->pluck('id')->toArray(),
-                $user->id
-            )->onQueue('phantombuster');
+            FetchAudienceEmailBatchJob::dispatchChunked($idsToQueue, $user->id);
+
+            $queued = count($idsToQueue);
 
             return response()->json([
                 'status' => 'success',
-                'message' => "Batch email fetch job dispatched for {$profileCount} profile(s). Please refresh the page in a few moments.",
-                'profile_count' => $profileCount
+                'message' => "Enrichment queued for {$queued} profile(s).",
+                'profile_count' => $queued
             ], 200);
         } catch (\Throwable $th) {
             Log::error('Failed to dispatch batch email fetch job', [

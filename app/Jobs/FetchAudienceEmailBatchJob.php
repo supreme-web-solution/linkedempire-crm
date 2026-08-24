@@ -2,11 +2,11 @@
 
 namespace App\Jobs;
 
-use App\Models\Audience;
 use App\Models\AudienceList;
-use App\Models\Integration;
 use App\Models\User;
-use App\Services\PhantomBusterService;
+use App\V2\Services\FullEnrichClient;
+use App\V2\Services\LeadEnrichmentPersister;
+use App\V2\Services\LeadEnrichmentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,309 +18,194 @@ class FetchAudienceEmailBatchJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 1; // No retries - fail fast and move to next
-    public $timeout = 600; // 10 minutes timeout for batch processing (reduced from 20)
-    public $deleteWhenMissingModels = true; // Delete if models are missing
+    public int $tries = 1;
+
+    public int $timeout = 900;
+
+    public bool $deleteWhenMissingModels = true;
 
     /**
-     * Array of audience list item IDs to process
-     * @var array<int>
+     * @param  array<int>  $audienceListItemIds
      */
-    public array $audienceListItemIds;
+    public function __construct(
+        public readonly array $audienceListItemIds,
+        public readonly int $userId,
+    ) {}
 
     /**
-     * User ID who initiated the batch
-     * @var int
+     * @param  array<int>  $audienceListItemIds
      */
-    public int $userId;
-
-    /**
-     * Create a new job instance.
-     */
-    public function __construct(array $audienceListItemIds, int $userId)
+    public static function dispatchChunked(array $audienceListItemIds, int $userId): void
     {
-        $this->audienceListItemIds = $audienceListItemIds;
-        $this->userId = $userId;
-    }
+        $ids = array_values(array_unique(array_map('intval', $audienceListItemIds)));
+        if ($ids === []) {
+            return;
+        }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
-    {
-        try {
-            $user = User::find($this->userId);
-            if (!$user) {
-                Log::warning('FetchAudienceEmailBatchJob: User not found', [
-                    'user_id' => $this->userId
-                ]);
-                return;
+        $chunkSize = max(1, (int) config('services.email_scraping.job_chunk_size', 5));
+        $stagger = max(0, (int) config('services.email_scraping.job_chunk_stagger_seconds', 3));
+
+        foreach (array_chunk($ids, $chunkSize) as $i => $chunk) {
+            $pending = self::dispatch($chunk, $userId);
+            if ($i > 0 && $stagger > 0) {
+                $pending->delay(now()->addSeconds($i * $stagger));
             }
-
-            // Check daily limit before processing
-            $this->checkAndResetDailyLimit($user);
-            
-            $dailyLimit = config('services.email_scraping.daily_limit_per_user', 100);
-            $profileCount = count($this->audienceListItemIds);
-            if ($user->daily_profile_email_scraping_count + $profileCount > $dailyLimit) {
-                Log::warning('FetchAudienceEmailBatchJob: Daily limit exceeded', [
-                    'user_id' => $this->userId,
-                    'current_count' => $user->daily_profile_email_scraping_count,
-                    'requested_count' => $profileCount,
-                    'limit' => $dailyLimit
-                ]);
-                throw new \Exception("Daily email scraping limit reached ({$dailyLimit} profiles/day). Please try again tomorrow.");
-            }
-
-            // Load all audience list items
-            $audienceListItems = AudienceList::whereIn('id', $this->audienceListItemIds)->get();
-            
-            if ($audienceListItems->isEmpty()) {
-                Log::warning('FetchAudienceEmailBatchJob: No audience list items found', [
-                    'audience_list_ids' => $this->audienceListItemIds
-                ]);
-                return;
-            }
-
-            // Get user's LinkedIn integration
-            $integration = Integration::where('user_id', $user->id)
-                ->where('oauth_provider', 'linkedin')
-                ->whereNotNull('linkedin_session_cookie')
-                ->latest('linkedin_session_verified_at')
-                ->first();
-
-            if (!$integration) {
-                Log::warning('FetchAudienceEmailBatchJob: LinkedIn session cookie not found', [
-                    'user_id' => $user->id
-                ]);
-                return;
-            }
-
-            // Build identities array
-            $identities = [[
-                'sessionCookie' => $integration->linkedin_session_cookie,
-                'userAgent' => $integration->linkedin_user_agent ?? config('services.phantombuster.linkedin_user_agent')
-            ]];
-
-            if (isset($integration->linkedin_identity_id) && !empty($integration->linkedin_identity_id)) {
-                $identities[0]['identityId'] = $integration->linkedin_identity_id;
-            }
-
-            // Collect profile URLs and map them to audience list item IDs
-            $profileUrls = [];
-            $urlToItemMap = [];
-            
-            foreach ($audienceListItems as $item) {
-                // Skip if email already exists
-                if (!empty($item->con_email)) {
-                    Log::info('FetchAudienceEmailBatchJob: Email already exists, skipping', [
-                        'audience_list_id' => $item->id
-                    ]);
-                    continue;
-                }
-
-                // Build profile URL from public identifier
-                $publicIdentifier = $item->con_public_identifier;
-                if (empty($publicIdentifier) && !empty($item->con_profile_url)) {
-                    if (preg_match('/\/in\/([^\/\?]+)/', $item->con_profile_url, $matches)) {
-                        $publicIdentifier = $matches[1];
-                    }
-                }
-
-                if (empty($publicIdentifier)) {
-                    Log::warning('FetchAudienceEmailBatchJob: No public identifier found', [
-                        'audience_list_id' => $item->id
-                    ]);
-                    continue;
-                }
-
-                $profileUrl = "https://www.linkedin.com/in/{$publicIdentifier}/";
-                $profileUrls[] = $profileUrl;
-                $urlToItemMap[$profileUrl] = $item->id;
-            }
-
-            if (empty($profileUrls)) {
-                Log::info('FetchAudienceEmailBatchJob: No valid profile URLs to process');
-                return;
-            }
-
-            Log::info('FetchAudienceEmailBatchJob: Starting batch email fetch', [
-                'user_id' => $user->id,
-                'profile_count' => count($profileUrls),
-                'audience_list_ids' => $this->audienceListItemIds
-            ]);
-
-            // Call PhantomBuster service with batch URLs
-            $service = new PhantomBusterService();
-            $results = $service->scrapeLinkedInProfilesBatch(
-                $profileUrls,
-                $identities,
-                600, // maxWaitSeconds - 10 minutes for batch
-                15   // pollIntervalSeconds
-            );
-
-            // Process results and update audience list items
-            $updatedCount = 0;
-            $notFoundCount = 0;
-            $errorCount = 0;
-
-            Log::info('FetchAudienceEmailBatchJob: Processing batch results', [
-                'results_count' => count($results),
-                'expected_count' => count($profileUrls),
-                'result_urls' => array_keys($results),
-                'expected_urls' => $profileUrls
-            ]);
-
-            // If no results, mark all as attempted
-            if (empty($results)) {
-                Log::warning('FetchAudienceEmailBatchJob: No results returned from PhantomBuster', [
-                    'profile_urls' => $profileUrls,
-                    'audience_list_ids' => $this->audienceListItemIds
-                ]);
-                
-                foreach ($audienceListItems as $item) {
-                    if (empty($item->con_email) && empty($item->email_fetch_attempted_at)) {
-                        $item->update([
-                            'email_fetch_attempted_at' => now(),
-                            'email_fetch_status' => 'completed'
-                        ]);
-                        $notFoundCount++;
-                    }
-                }
-            }
-
-            foreach ($results as $profileUrl => $profileData) {
-                $audienceListItemId = $urlToItemMap[$profileUrl] ?? null;
-                
-                if (!$audienceListItemId) {
-                    continue;
-                }
-
-                $audienceListItem = $audienceListItems->firstWhere('id', $audienceListItemId);
-                if (!$audienceListItem) {
-                    continue;
-                }
-
-                try {
-                    // Extract email from profile data
-                    $email = $this->extractEmail($profileData);
-
-                    if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        $audienceListItem->update([
-                            'con_email' => $email,
-                            'email_fetch_status' => 'completed'
-                        ]);
-                        $updatedCount++;
-                        
-                        Log::info('FetchAudienceEmailBatchJob: Successfully fetched email', [
-                            'audience_list_id' => $audienceListItemId,
-                            'email' => substr($email, 0, 50) . '...'
-                        ]);
-                    } else {
-                        // Mark that email fetch was attempted but no email found
-                        $audienceListItem->update([
-                            'email_fetch_attempted_at' => now(),
-                            'email_fetch_status' => 'completed'
-                        ]);
-                        $notFoundCount++;
-                        
-                        Log::warning('FetchAudienceEmailBatchJob: No valid email found', [
-                            'audience_list_id' => $audienceListItemId,
-                            'profile_url' => $profileUrl
-                        ]);
-                    }
-                } catch (\Throwable $th) {
-                    $errorCount++;
-                    Log::error('FetchAudienceEmailBatchJob: Error processing result', [
-                        'audience_list_id' => $audienceListItemId,
-                        'error' => $th->getMessage()
-                    ]);
-                }
-            }
-
-            // Update daily count
-            $user->increment('daily_profile_email_scraping_count', count($profileUrls));
-
-            Log::info('FetchAudienceEmailBatchJob: Batch processing completed', [
-                'user_id' => $user->id,
-                'total_profiles' => count($profileUrls),
-                'updated' => $updatedCount,
-                'not_found' => $notFoundCount,
-                'errors' => $errorCount
-            ]);
-
-        } catch (\Throwable $th) {
-            Log::error('FetchAudienceEmailBatchJob: Failed to process batch', [
-                'user_id' => $this->userId,
-                'audience_list_ids' => $this->audienceListItemIds,
-                'error' => $th->getMessage(),
-                'trace' => $th->getTraceAsString()
-            ]);
-            
-            // Re-throw to mark job as failed
-            throw $th;
         }
     }
 
-    /**
-     * Extract email from profile data
-     */
-    private function extractEmail(array $profileData): ?string
-    {
-        // Try professionalEmail first (most common field)
-        if (isset($profileData['professionalEmail']) && 
-            is_string($profileData['professionalEmail']) && 
-            trim($profileData['professionalEmail']) !== '') {
-            return trim($profileData['professionalEmail']);
+    public function handle(
+        LeadEnrichmentService $enrichmentService,
+        LeadEnrichmentPersister $persister,
+    ): void {
+        Log::info('[FetchAudienceEmailBatchJob] started', [
+            'user_id' => $this->userId,
+            'count' => count($this->audienceListItemIds),
+        ]);
+
+        $user = User::find($this->userId);
+        if (! $user) {
+            $this->markItemsRetryable($this->audienceListItemIds, 'User not found for enrichment job.');
+
+            return;
         }
-        // Try email field
-        elseif (isset($profileData['email']) && 
-                is_string($profileData['email']) && 
-                trim($profileData['email']) !== '') {
-            return trim($profileData['email']);
-        }
-        // Try emailAddress field
-        elseif (isset($profileData['emailAddress']) && 
-                is_string($profileData['emailAddress']) && 
-                trim($profileData['emailAddress']) !== '') {
-            return trim($profileData['emailAddress']);
-        }
-        // Try nested contactInfo fields
-        elseif (isset($profileData['contactInfo']) && is_array($profileData['contactInfo'])) {
-            if (isset($profileData['contactInfo']['emailAddress']) && 
-                is_string($profileData['contactInfo']['emailAddress']) && 
-                trim($profileData['contactInfo']['emailAddress']) !== '') {
-                return trim($profileData['contactInfo']['emailAddress']);
-            } elseif (isset($profileData['contactInfo']['email']) && 
-                      is_string($profileData['contactInfo']['email']) && 
-                      trim($profileData['contactInfo']['email']) !== '') {
-                return trim($profileData['contactInfo']['email']);
+
+        FullEnrichClient::resetCreditsExhausted();
+
+        $this->checkAndResetDailyLimit($user);
+        $user->refresh();
+
+        $dailyLimit = (int) config('services.email_scraping.daily_limit_per_user', 100);
+        $items = AudienceList::whereIn('id', $this->audienceListItemIds)->get();
+        $lookupsDone = 0;
+        $startedAt = microtime(true);
+        $softDeadline = $startedAt + max(60, $this->timeout - 150);
+        $remainingIds = [];
+
+        foreach ($items as $index => $item) {
+            if (microtime(true) >= $softDeadline) {
+                $remainingIds = $items->slice($index)->pluck('id')->map(fn ($id) => (int) $id)->all();
+                break;
+            }
+
+            if (! empty($item->email_fetch_attempted_at) && $item->email_fetch_status === 'completed') {
+                continue;
+            }
+
+            if ($user->daily_profile_email_scraping_count >= $dailyLimit) {
+                AudienceList::query()
+                    ->whereIn('id', $items->slice($index)->pluck('id'))
+                    ->whereIn('email_fetch_status', ['pending', 'processing'])
+                    ->update(['email_fetch_status' => null, 'email_fetch_attempted_at' => null]);
+                break;
+            }
+
+            if (! empty($item->con_email)) {
+                $item->update(['email_fetch_status' => 'completed']);
+                continue;
+            }
+
+            $publicIdentifier = trim((string) ($item->con_public_identifier ?? ''));
+            if ($publicIdentifier === '' && ! empty($item->con_profile_url) && preg_match('/\/in\/([^\/\?]+)/', $item->con_profile_url, $m)) {
+                $publicIdentifier = $m[1];
+            }
+
+            if ($publicIdentifier === '') {
+                $item->update([
+                    'email_fetch_attempted_at' => now(),
+                    'email_fetch_status' => 'completed',
+                ]);
+                continue;
+            }
+
+            $item->update(['email_fetch_status' => 'processing']);
+
+            if ($lookupsDone > 0) {
+                $this->humanPause();
+            }
+            $lookupsDone++;
+
+            try {
+                $input = $enrichmentService->inputFromAudienceList($item);
+                $result = $enrichmentService->enrich($user, $input);
+                $persister->persistAudienceLead($item, $result, $user->id);
+            } catch (\Throwable $e) {
+                $item->update([
+                    'email_fetch_status' => null,
+                    'email_fetch_attempted_at' => null,
+                ]);
+
+                Log::error('[FetchAudienceEmailBatchJob] enrichment failed', [
+                    'audience_list_id' => $item->id,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
+
+            if (! $result->isSoftTimeout()) {
+                $user->increment('daily_profile_email_scraping_count');
+                $user->refresh();
             }
         }
 
-        return null;
+        if ($remainingIds !== []) {
+            AudienceList::query()
+                ->whereIn('id', $remainingIds)
+                ->whereIn('email_fetch_status', ['pending', 'processing'])
+                ->update(['email_fetch_status' => 'pending']);
+
+            self::dispatch($remainingIds, $this->userId)->delay(now()->addSeconds(5));
+        }
+    }
+
+    public function failed(?\Throwable $e): void
+    {
+        $this->markItemsRetryable($this->audienceListItemIds, $e?->getMessage() ?: 'Enrichment job failed.');
     }
 
     /**
-     * Check and reset daily limit if needed
+     * @param  array<int>  $ids
      */
+    private function markItemsRetryable(array $ids, string $reason): void
+    {
+        if ($ids === []) {
+            return;
+        }
+
+        AudienceList::query()
+            ->whereIn('id', $ids)
+            ->whereIn('email_fetch_status', ['pending', 'processing'])
+            ->update([
+                'email_fetch_status' => 'timed_out',
+                'email_fetch_attempted_at' => now(),
+            ]);
+
+        Log::warning('[FetchAudienceEmailBatchJob] marked items retryable', [
+            'ids' => $ids,
+            'reason' => $reason,
+        ]);
+    }
+
+    private function humanPause(): void
+    {
+        $min = max(0, (int) config('services.unipile_pacing.profile_lookup_delay_min_ms', 1000));
+        $max = max($min, (int) config('services.unipile_pacing.profile_lookup_delay_max_ms', 3000));
+
+        if ($max > 0) {
+            usleep(random_int($min, $max) * 1000);
+        }
+    }
+
     private function checkAndResetDailyLimit(User $user): void
     {
         $today = now()->toDateString();
-        $resetDate = $user->daily_profile_email_scraping_reset_at 
-            ? \Carbon\Carbon::parse($user->daily_profile_email_scraping_reset_at)->toDateString() 
+        $resetDate = $user->daily_profile_email_scraping_reset_at
+            ? \Carbon\Carbon::parse($user->daily_profile_email_scraping_reset_at)->toDateString()
             : null;
 
-        // Reset if it's a new day
         if ($resetDate !== $today) {
             $user->update([
                 'daily_profile_email_scraping_count' => 0,
-                'daily_profile_email_scraping_reset_at' => $today
-            ]);
-            
-            Log::info('FetchAudienceEmailBatchJob: Daily limit reset', [
-                'user_id' => $user->id,
-                'reset_date' => $today
+                'daily_profile_email_scraping_reset_at' => $today,
             ]);
         }
     }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\LinkedInPost;
 use App\Models\PostTemplate;
 use App\Models\Timezone;
+use App\Models\V2IntegrationAccount;
 use App\Services\ChatGPT;
 use App\Services\LinkedInContentService;
 use App\Helpers\CampaignHelper;
@@ -41,7 +42,8 @@ class ContentCreatorController extends Controller
             'published_posts' => LinkedInPost::where('user_id', $userId)->where('status', 'published')->count(),
         ];
         
-        return view('content-creator.index', compact('posts', 'stats', 'status', 'userTimezone'));
+        return view('content-creator.index', compact('posts', 'stats', 'status', 'userTimezone'))
+            ->with('hasLinkedIn', $this->userHasLinkedIn());
     }
 
     /**
@@ -58,7 +60,8 @@ class ContentCreatorController extends Controller
         $industries = PostTemplate::getIndustries();
         $userTimezone = $this->getUserTimezone();
         
-        return view('content-creator.create', compact('templates', 'categories', 'industries', 'userTimezone'));
+        return view('content-creator.create', compact('templates', 'categories', 'industries', 'userTimezone'))
+            ->with('hasLinkedIn', $this->userHasLinkedIn());
     }
 
     /**
@@ -195,7 +198,8 @@ class ContentCreatorController extends Controller
         $categories = PostTemplate::getCategories();
         $industries = PostTemplate::getIndustries();
         
-        return view('content-creator.edit', compact('post', 'templates', 'categories', 'industries', 'userTimezone'));
+        return view('content-creator.edit', compact('post', 'templates', 'categories', 'industries', 'userTimezone'))
+            ->with('hasLinkedIn', $this->userHasLinkedIn());
     }
 
     /**
@@ -793,5 +797,19 @@ class ContentCreatorController extends Controller
             'message' => 'Post status updated successfully',
             'status' => 200
         ]);
+    }
+
+    private function userHasLinkedIn(): bool
+    {
+        $userId = auth()->id();
+        if (! $userId) {
+            return false;
+        }
+
+        return V2IntegrationAccount::query()
+            ->where('user_id', $userId)
+            ->where('provider', 'linkedin')
+            ->where('status', 'active')
+            ->exists();
     }
 }

@@ -35,7 +35,10 @@ class User extends Authenticatable
         'calendly_token_expires',
         'calendly_organization_uri',
         'daily_profile_email_scraping_count',
-        'daily_profile_email_scraping_reset_at'
+        'daily_profile_email_scraping_reset_at',
+        'current_organization_id',
+        'entitlements',
+        'is_platform_admin',
     ];
 
     /**
@@ -58,7 +61,14 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'entitlements' => 'array',
+            'is_platform_admin' => 'boolean',
         ];
+    }
+
+    public function currentOrganization()
+    {
+        return $this->belongsTo(V2Organization::class, 'current_organization_id');
     }
     
     /**

@@ -11,7 +11,7 @@
     <div class="bg-white rounded-lg shadow p-4 sm:p-6 space-y-4">
         <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold text-gray-900">{{ __('competitor_followers.title') }}</h2>
-            <a href="{{ route('social-account.index') }}" class="text-sm text-[#0077b5] hover:text-[#005885] font-medium">Manage LinkedIn session →</a>
+            <a href="{{ route('social-account.index') }}" class="text-sm text-[#0077b5] hover:text-[#005885] font-medium">Connect LinkedIn via Integrations →</a>
         </div>
         @if (session('error'))
             <div class="rounded border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">
@@ -20,15 +20,15 @@
         @endif
         @if (!$hasLinkedInSession)
             <div class="rounded border border-[#0077b5] bg-blue-50 text-[#005885] px-4 py-3 text-sm">
-                <p class="font-medium">Add your LinkedIn session cookie first</p>
-                <p class="mt-1">Visit the Social Accounts page, open your connected LinkedIn profile, and paste your <code class="font-mono bg-white/60 px-1 py-0.5 rounded">li_at</code> cookie + user agent. We'll auto-fill it for every competitor fetch.</p>
+                <p class="font-medium">Connect LinkedIn first</p>
+                <p class="mt-1">Link your LinkedIn account on the Integrations page before harvesting competitor engagers. No session cookie is required — Unipile handles the connection.</p>
             </div>
         @endif
         <form method="POST" action="{{ route('competitor-followers.fetch') }}" class="grid grid-cols-1 gap-4">
             @csrf
             <div>
                 <label class="block text-sm text-gray-700 mb-1">{{ __('competitor_followers.company_url_label') }}</label>
-                <input name="company_url" type="url" required placeholder="https://www.linkedin.com/company/..." class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
+                <input name="company_url" type="url" required placeholder="https://www.linkedin.com/company/... or https://www.linkedin.com/in/..." class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0077b5]" />
                 @error('company_url')
                     <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
                 @enderror
@@ -60,7 +60,7 @@
                             $companyUrl = $meta['company_url'] ?? null;
                             $lastError = $meta['last_error'] ?? null;
                             $lastErrorType = $meta['last_error_type'] ?? null;
-                            $isSessionError = $lastErrorType === 'session_cookie';
+                            $isHarvestError = in_array($lastErrorType, ['harvest_error', 'session_cookie'], true);
                             $isNoDataError = $lastErrorType === 'no_data';
                             $fetchStatus = $meta['fetch_status'] ?? null;
                             $fetchProgress = $meta['fetch_progress'] ?? null;
@@ -115,17 +115,17 @@
                                 @else
                                     <div class="text-xs text-gray-400">N/A</div>
                                 @endif
-                                @if($isSessionError && $lastError)
+                                @if($isHarvestError && $lastError)
                                     <div class="mt-2 rounded border border-orange-300 bg-orange-50 text-orange-800 px-3 py-2 text-xs">
                                         <div class="font-medium flex items-center gap-1">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                                             </svg>
-                                            Session Cookie Error
+                                            Harvest Error
                                         </div>
                                         <p class="mt-1">{{ $lastError }}</p>
                                         <a href="{{ route('social-account.index') }}" class="mt-1 inline-flex items-center gap-1 text-orange-700 hover:text-orange-900 font-medium underline">
-                                            Update LinkedIn Session →
+                                            Reconnect LinkedIn →
                                         </a>
                                     </div>
                                 @elseif($isNoDataError && $lastError)

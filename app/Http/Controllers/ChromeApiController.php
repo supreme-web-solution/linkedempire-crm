@@ -522,8 +522,7 @@ class ChromeApiController extends Controller
                         }
 
                         // Dispatch individual email fetch job (one by one)
-                        \App\Jobs\FetchAudienceEmailJob::dispatch($audienceListItem->id, $public_identifier)
-                            ->onQueue('phantombuster');
+                        FetchAudienceEmailJob::dispatch($audienceListItem->id, $public_identifier);
                         
                         Log::info('Dispatched individual email fetch job from extension', [
                             'audience_list_id' => $audienceListItem->id,
@@ -2567,8 +2566,7 @@ class ChromeApiController extends Controller
             Cache::forget($cacheKey);
             
             // Dispatch batch job
-            \App\Jobs\FetchAudienceEmailBatchJob::dispatch($audienceListIds, $userId)
-                ->onQueue('phantombuster');
+            FetchAudienceEmailBatchJob::dispatchChunked($audienceListIds, $userId);
             
             Log::info('Dispatched batch email fetch job from extension', [
                 'audience_id' => $audienceId,

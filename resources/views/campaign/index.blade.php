@@ -1,6 +1,12 @@
 @extends('layout.auth')
 
 @section('content')
+@if (session('success'))
+    <div class="mb-4 rounded border border-green-200 bg-green-50 text-green-800 px-4 py-3 text-sm">{{ session('success') }}</div>
+@endif
+@if (session('error'))
+    <div class="mb-4 rounded border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">{{ session('error') }}</div>
+@endif
 <style>
 .btn-linkedin {
     background: linear-gradient(135deg, #0077b5 0%, #005885 100%);
@@ -99,11 +105,15 @@ function getStatusClass(status) {
     switch(status.toLowerCase()) {
         case 'active':
         case 'running':
+        case 'preparing':
             return 'text-green-600';
         case 'completed':
             return 'text-blue-600';
+        case 'draft':
+            return 'text-amber-600';
+        case 'paused':
         case 'stop':
-            return 'text-red-600';
+            return 'text-yellow-600';
         default:
             return 'text-gray-600';
     }
@@ -245,8 +255,25 @@ document.addEventListener('DOMContentLoaded', function() {
                             <a href="{{route('campaign.create', ['step' => 'lead', 'cid' => $item->id])}}" class="hover:underline">{{ $item->name }}</a>
                         </div>
                     </div>
-                    @php($statusLabel = $item->status === 'active' ? 'running' : $item->status)
-                    <small class="font-normal text-gray-400 uppercase campaign-status {{ in_array($item->status, ['running', 'active'], true) ? 'text-green-600' : ($item->status == 'completed' ? 'text-blue-600' : ($item->status == 'stop' ? 'text-red-600' : 'text-gray-600')) }}">{{ $statusLabel }}</small>
+                    @php
+                        $statusLabel = match ($item->status) {
+                            'active', 'running' => 'running',
+                            'stop' => 'paused',
+                            default => $item->status,
+                        };
+                        $isRunning = in_array($item->status, ['running', 'active', 'preparing'], true);
+                        $canRun = ! $isRunning && ! in_array($item->status, ['completed', 'draft'], true);
+                        $statusClass = $isRunning
+                            ? 'text-green-600'
+                            : ($item->status === 'completed'
+                                ? 'text-blue-600'
+                                : (in_array($item->status, ['paused', 'stop'], true)
+                                    ? 'text-yellow-600'
+                                    : ($item->status === 'draft'
+                                        ? 'text-amber-600'
+                                        : 'text-gray-600')));
+                    @endphp
+                    <small class="font-normal text-gray-400 uppercase campaign-status {{ $statusClass }}">{{ $statusLabel }}</small>
                 </div>
             </div>
             <div class="col-span-3 flex">
@@ -283,14 +310,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     <small class="font-normal text-gray-400">Reply rate</small>
                 </div> -->
             </div>
-            <div class="col-span-2 flex">
-                <div class="w-full">
+            <div class="col-span-2 flex items-start justify-end gap-2">
+                @if($isRunning)
+                    <form action="{{ route('campaign.pause', ['id' => $item->id]) }}" method="POST" onsubmit="return confirm('Pause &quot;{{ addslashes($item->name) }}&quot;?');">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-2.5 py-1.5 text-xs font-medium text-yellow-800 hover:bg-yellow-100 transition-colors" title="Pause campaign">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                            </svg>
+                            Pause
+                        </button>
+                    </form>
+                @elseif($canRun)
+                    <form action="{{ route('campaign.activate', ['id' => $item->id]) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-800 hover:bg-green-100 transition-colors" title="Run campaign">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                            </svg>
+                            Run
+                        </button>
+                    </form>
+                @endif
+                <div class="w-full max-w-[4.5rem]">
                     <div class="text-gray-800">
                         {{ date_format(date_create($item->created_at), "d M, Y") }}
                     </div>
                     <small class="font-normal text-gray-400">Created</small>
                 </div>
-                <div class="hs-dropdown relative inline-flex">
+                <div class="hs-dropdown relative inline-flex shrink-0">
                     <button id="hs-dropdown-default-{{$item->id}}" type="button" class="hs-dropdown-toggle py-3 px-2 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg text-gray-600 hover:text-gray-800 hover:bg-gray-100 focus:outline-hidden disabled:opacity-50 disabled:pointer-events-none" aria-haspopup="menu" aria-expanded="false" aria-label="Dropdown">
                         <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 4 15">
                             <path d="M3.5 1.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 6.041a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm0 5.959a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"/>

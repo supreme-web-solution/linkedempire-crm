@@ -1,0 +1,913 @@
+<?php
+
+
+
+namespace App\V2\Services;
+
+
+
+use App\Models\User;
+
+use App\Models\V2IntegrationAccount;
+
+use App\V2\Integrations\ProviderManager;
+use App\V2\Integrations\Unipile\UnipileException;
+use App\V2\Services\OutreachPersistenceService;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+
+use Illuminate\Http\Request;
+
+
+
+class LinkedInConnectionService
+
+{
+
+    public function __construct(private readonly ProviderManager $providerManager)
+
+    {
+
+    }
+
+
+
+    public function publicBaseUrl(?Request $request = null): string
+
+    {
+
+        if ($request) {
+
+            return rtrim($request->getSchemeAndHttpHost(), '/');
+
+        }
+
+
+
+        return rtrim((string) config('app.url'), '/');
+
+    }
+
+
+
+    public function webhookCallbackUrl(?Request $request = null): string
+
+    {
+
+        $path = (string) config('services.unipile.webhook_callback_path', '/unipile/callback');
+
+
+
+        return $this->publicBaseUrl($request).(str_starts_with($path, '/') ? $path : '/'.$path);
+
+    }
+
+
+
+    /**
+
+     * @return array<string, mixed>
+
+     */
+
+    public function buildHostedAuthContext(
+
+        User $user,
+
+        ?Request $request = null,
+
+        string $successPath = '/integrations?connected=1',
+
+        string $failPath = '/integrations?error=1',
+
+    ): array {
+
+        $base = $this->publicBaseUrl($request);
+
+        $orgId = (int) ($user->current_organization_id ?? 0);
+
+
+
+        return [
+
+            'name' => (string) $user->id,
+
+            'state' => 'uid:'.$user->id,
+
+            'provider' => 'LINKEDIN',
+
+            'organization_id' => $orgId,
+
+            'success_redirect_url' => $base.$successPath,
+
+            'failure_redirect_url' => $base.$failPath,
+
+            'notify_url' => $this->webhookCallbackUrl($request),
+
+        ];
+
+    }
+
+
+
+    /**
+
+     * @return array<string, mixed>
+
+     */
+
+    public function createHostedAuthLink(
+
+        User $user,
+
+        ?Request $request = null,
+
+        string $successPath = '/integrations?connected=1',
+
+        string $failPath = '/integrations?error=1',
+
+    ): array {
+
+        $context = $this->buildHostedAuthContext($user, $request, $successPath, $failPath);
+
+        $existing = $this->consolidateProviderAccount($user->id, 'linkedin');
+
+        $context = $this->appendHostedAuthReconnect($context, $existing);
+
+        return $this->providerManager->account(
+
+            $this->providerManager->defaultProvider()
+
+        )->createHostedAuthLink($context);
+
+    }
+
+
+
+    public function hostedAuthUrl(
+
+        User $user,
+
+        string $successPath,
+
+        string $failPath,
+
+        ?Request $request = null,
+
+    ): ?string {
+
+        try {
+
+            $result = $this->createHostedAuthLink($user, $request, $successPath, $failPath);
+
+
+
+            return $result['url'] ?? $result['link'] ?? $result['hosted_url'] ?? null;
+
+        } catch (\Throwable) {
+
+            return null;
+
+        }
+
+    }
+
+
+
+    public function isUnipileConfigured(): bool
+
+    {
+
+        return ! empty(config('services.unipile.api_key'))
+
+            && ! empty(config('services.unipile.base_url'));
+
+    }
+
+    public function consolidateProviderAccount(int $userId, string $provider = 'linkedin'): ?V2IntegrationAccount
+
+    {
+
+        $accounts = V2IntegrationAccount::query()
+
+            ->where('user_id', $userId)
+
+            ->where('provider', $provider)
+
+            ->orderByDesc('id')
+
+            ->get();
+
+        if ($accounts->isEmpty()) {
+
+            return null;
+
+        }
+
+        if ($accounts->count() === 1) {
+
+            return $accounts->first();
+
+        }
+
+        $canonical = $accounts->first(
+
+            fn (V2IntegrationAccount $account) => $account->status === 'active' && $account->getUnipileAccountId()
+
+        )
+
+            ?? $accounts->first(fn (V2IntegrationAccount $account) => $account->status === 'active')
+
+            ?? $accounts->first();
+
+        $duplicateIds = $accounts
+
+            ->where('id', '!=', $canonical->id)
+
+            ->pluck('id');
+
+        if ($duplicateIds->isNotEmpty()) {
+
+            V2IntegrationAccount::query()->whereIn('id', $duplicateIds)->delete();
+
+        }
+
+        return $canonical;
+
+    }
+
+
+
+    /**
+
+     * @return array<string, mixed>
+
+     */
+
+    public function serializeAccount(V2IntegrationAccount $account): array
+
+    {
+
+        $unipileId = $account->getUnipileAccountId();
+
+        // Cookie-only / mock rows can be status=active without a Unipile id — treat as not connected.
+
+        $effectivelyConnected = $unipileId && $account->status === 'active';
+
+        return [
+
+            'id' => $account->id,
+
+            'provider' => $account->provider,
+
+            'status' => $effectivelyConnected ? 'active' : 'disconnected',
+
+            'provider_account_id' => $account->provider_account_id,
+
+            'connection_method' => $account->meta['connection_method'] ?? 'unknown',
+
+            'connected_at' => $account->meta['connected_at'] ?? null,
+
+            'email' => $account->meta['email'] ?? null,
+
+            'unipile_account_id' => $unipileId,
+
+            'last_synced_at' => $account->last_synced_at?->diffForHumans(),
+
+            'live_status' => $effectivelyConnected
+
+                ? ($account->meta['live_status'] ?? 'connected')
+
+                : 'disconnected',
+
+            'disconnect_reason' => $unipileId
+
+                ? ($account->meta['disconnect_reason'] ?? null)
+
+                : 'LinkedIn was saved locally but never registered with Unipile. Reconnect after setting UNIPILE_API_KEY.',
+
+        ];
+
+    }
+
+
+
+    public function isDisconnectedError(\Throwable $e): bool
+
+    {
+
+        if (! $e instanceof UnipileException) {
+
+            return false;
+
+        }
+
+        $response = is_array($e->context['response'] ?? null) ? $e->context['response'] : [];
+        $type = $e->context['error_code']
+            ?? ($response['type'] ?? null);
+        $haystack = strtolower(
+            $e->getMessage().' '.(string) ($response['detail'] ?? '').' '.(string) ($response['title'] ?? '')
+        );
+
+        if ($e->statusCode === 401
+            || $type === 'errors/disconnected_account'
+            || $type === 'errors/missing_credentials'
+            || str_contains($haystack, 'disconnected_account')
+            || str_contains($haystack, 'disconnected account')
+            || str_contains($haystack, 'account not found')
+            || str_contains($haystack, 'missing_credentials')
+        ) {
+            return true;
+        }
+
+        // resource_not_found is used for both missing Unipile accounts and missing recipients —
+        // only treat as disconnect when Unipile points at the account itself.
+        return $type === 'errors/resource_not_found'
+            && (str_contains($haystack, 'account not found') || str_contains($haystack, 'account_id'));
+    }
+
+
+
+    public function markDisconnected(V2IntegrationAccount $account, ?string $reason = null): void
+
+    {
+        $wasConnected = ($account->status === 'active')
+            || (($account->meta['live_status'] ?? null) === 'connected');
+
+        $account->update([
+
+            'status' => 'disconnected',
+
+            'meta' => array_merge($account->meta ?? [], array_filter([
+
+                'live_status' => 'disconnected',
+
+                'disconnected_at' => now()->toIso8601String(),
+
+                'disconnect_reason' => $reason,
+
+            ])),
+
+        ]);
+
+        if ($wasConnected) {
+            $this->notifyReconnectRequired($account, $reason);
+        }
+
+    }
+
+    private function notifyReconnectRequired(V2IntegrationAccount $account, ?string $reason = null): void
+    {
+        $user = User::query()->find($account->user_id);
+        $email = trim((string) ($user?->email ?? ''));
+
+        if ($email === '') {
+            return;
+        }
+
+        $provider = (string) ($account->provider ?? 'integration');
+        $label = \App\V2\Outreach\OutreachChannelRegistry::channelLabel(
+            (string) (($account->meta['channel_key'] ?? null) ?: $provider)
+        );
+
+        $subject = "Action needed: reconnect your {$label} integration";
+        $message = "We detected that your {$label} integration is disconnected and needs reconnection.\n\n"
+            ."Please reconnect from Integrations (or the extension Settings for LinkedIn) with a fresh session.\n\n"
+            ."Provider account: {$provider}\n"
+            .'Time: '.now()->toDateTimeString()."\n";
+
+        if ($reason) {
+            $message .= "\nReason: ".trim($reason)."\n";
+        }
+
+        try {
+            Mail::raw($message, function ($mail) use ($email, $subject): void {
+                $mail->to($email)->subject($subject);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('[Integration] Reconnect email failed', [
+                'user_id' => $account->user_id,
+                'provider' => $provider,
+                'email' => $email,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+
+
+    /**
+
+     * @return array{live_status: string, status: string, message: string}
+
+     */
+
+    public function verifyAccount(V2IntegrationAccount $account): array
+
+    {
+
+        $unipileId = $account->getUnipileAccountId();
+
+        if (! $unipileId) {
+
+            $this->markDisconnected(
+
+                $account,
+
+                'No Unipile account id on record. Reconnect LinkedIn after configuring UNIPILE_API_KEY / UNIPILE_BASE_URL (and UNIPILE_MOCK=false).'
+
+            );
+
+
+
+            return [
+
+                'live_status' => 'disconnected',
+
+                'status' => 'disconnected',
+
+                'message' => 'No Unipile account id on record. LinkedIn is not connected for search/outreach.',
+
+            ];
+
+        }
+
+
+
+        $provider = $this->providerManager->account($this->providerManager->defaultProvider());
+
+
+
+        try {
+
+            $provider->getAccount($unipileId);
+
+            $account->update([
+
+                'status' => 'active',
+
+                'meta' => array_merge($account->meta ?? [], [
+
+                    'live_status' => 'connected',
+
+                    'disconnected_at' => null,
+
+                    'disconnect_reason' => null,
+
+                ]),
+
+                'last_synced_at' => now(),
+
+            ]);
+
+
+
+            return [
+
+                'live_status' => 'connected',
+
+                'status' => 'active',
+
+                'message' => 'LinkedIn is connected.',
+
+            ];
+
+        } catch (UnipileException $e) {
+
+            if ($this->isDisconnectedError($e)) {
+
+                $this->markDisconnected($account, $e->getMessage());
+
+
+
+                return [
+
+                    'live_status' => 'disconnected',
+
+                    'status' => 'disconnected',
+
+                    'message' => 'LinkedIn is disconnected. Reconnect with a fresh li_at cookie.',
+
+                ];
+
+            }
+
+
+
+            throw $e;
+
+        }
+
+    }
+
+
+
+    /**
+
+     * @return array<int, array<string, mixed>>
+
+     */
+
+    public function verifyUserAccounts(User $user): array
+
+    {
+
+        $account = $this->consolidateProviderAccount($user->id, 'linkedin');
+
+        if ($account === null) {
+
+            return [];
+
+        }
+
+        $health = $this->verifyAccount($account);
+
+
+
+        return [array_merge($this->serializeAccount($account->fresh()), $health)];
+
+    }
+
+
+
+    public function connectViaCookie(User $user, string $liAt, string $userAgent, int $orgId, ?string $country = null): V2IntegrationAccount
+
+    {
+
+        return $this->connectOrReconnectViaCookie($user, $liAt, $userAgent, $orgId, $country);
+
+    }
+
+
+
+    public function connectOrReconnectViaCookie(User $user, string $liAt, string $userAgent, int $orgId, ?string $country = null): V2IntegrationAccount
+
+    {
+
+        $this->assertUnipileReadyForConnect();
+
+
+
+        $provider = $this->providerManager->account($this->providerManager->defaultProvider());
+
+        $existing = $this->consolidateProviderAccount($user->id, 'linkedin');
+
+        $unipileAccountId = $existing?->getUnipileAccountId();
+
+        $previousUnipileId = $unipileAccountId;
+
+        $result = null;
+
+        $connectOptions = $this->cookieConnectOptions($country);
+
+
+
+        if ($unipileAccountId) {
+
+            try {
+
+                $result = $provider->reconnectAccount($unipileAccountId, array_merge([
+
+                    'provider' => 'LINKEDIN',
+
+                    'access_token' => $liAt,
+
+                    'user_agent' => $userAgent,
+
+                ], $connectOptions));
+
+            } catch (\Throwable $e) {
+
+                Log::info('[Connect] Unipile reconnect unavailable — releasing old account before fresh cookie connect', [
+
+                    'user_id' => $user->id,
+
+                    'account_id' => $unipileAccountId,
+
+                    'error' => $e->getMessage(),
+
+                ]);
+
+                $this->releaseRemoteUnipileAccount($unipileAccountId);
+
+                $result = $provider->connectWithCookie($liAt, $userAgent, $connectOptions);
+
+                $unipileAccountId = $result['account_id'] ?? $result['id'] ?? null;
+
+            }
+
+        } else {
+
+            $result = $provider->connectWithCookie($liAt, $userAgent, $connectOptions);
+
+            $unipileAccountId = $result['account_id'] ?? $result['id'] ?? null;
+
+        }
+
+
+
+        if (is_array($result) && ! empty($result['mock'])) {
+
+            throw new UnipileException(
+
+                'LinkedIn connection is running in Unipile mock mode. Set UNIPILE_MOCK=false and configure UNIPILE_API_KEY / UNIPILE_BASE_URL on the server, then reconnect.',
+
+                503
+
+            );
+
+        }
+
+
+
+        $unipileAccountId = is_string($unipileAccountId) && $unipileAccountId !== ''
+
+            ? $unipileAccountId
+
+            : null;
+
+
+
+        if (! $unipileAccountId) {
+
+            throw new UnipileException(
+
+                'Unipile did not return a LinkedIn account id. Check UNIPILE_API_KEY and UNIPILE_BASE_URL, then reconnect your LinkedIn session.',
+
+                502,
+
+                ['response' => $result]
+
+            );
+
+        }
+
+        if ($previousUnipileId && $previousUnipileId !== $unipileAccountId) {
+            $this->releaseRemoteUnipileAccount($previousUnipileId);
+            app(OutreachPersistenceService::class)->invalidateProviderChatIdsForUser($user->id);
+        }
+
+
+
+        $account = V2IntegrationAccount::query()->updateOrCreate(
+
+            [
+
+                'user_id' => $user->id,
+
+                'provider' => 'linkedin',
+
+            ],
+
+            [
+
+                'provider_account_id' => $unipileAccountId,
+
+                'status' => 'active',
+
+                'meta' => array_merge($existing?->meta ?? [], [
+
+                    'organization_id' => $orgId,
+
+                    'unipile_account_id' => $unipileAccountId,
+
+                    'connected_at' => now()->toIso8601String(),
+
+                    'connection_method' => 'cookie',
+
+                    'proxy_country' => $connectOptions['country'] ?? null,
+
+                    'live_status' => 'connected',
+
+                    'disconnected_at' => null,
+
+                    'disconnect_reason' => null,
+
+                ]),
+
+                'last_synced_at' => now(),
+
+            ]
+
+        );
+
+        return $this->consolidateProviderAccount($user->id, 'linkedin') ?? $account;
+
+    }
+
+
+
+    private function assertUnipileReadyForConnect(): void
+
+    {
+
+        if ((bool) config('services.unipile.mock', false)) {
+
+            throw new UnipileException(
+
+                'UNIPILE_MOCK is enabled on this server. Set UNIPILE_MOCK=false and configure UNIPILE_API_KEY / UNIPILE_BASE_URL before connecting LinkedIn.',
+
+                503
+
+            );
+
+        }
+
+
+
+        if (trim((string) config('services.unipile.api_key', '')) === '') {
+
+            throw new UnipileException(
+
+                'UNIPILE_API_KEY is missing on this server. Add it in Forge environment, clear config cache, then reconnect LinkedIn.',
+
+                503
+
+            );
+
+        }
+
+    }
+
+
+
+    public function handleUnipileFailure(User $user, \Throwable $e): void
+
+    {
+
+        if (! $this->isDisconnectedError($e)) {
+
+            return;
+
+        }
+
+
+
+        $account = V2IntegrationAccount::query()
+
+            ->where('user_id', $user->id)
+
+            ->where('provider', 'linkedin')
+
+            ->where('status', 'active')
+
+            ->latest('id')
+
+            ->first();
+
+
+
+        if ($account) {
+
+            $this->markDisconnected($account, $e->getMessage());
+
+        }
+
+    }
+
+
+
+    public function disconnect(User $user, int $accountId): void
+
+    {
+
+        $account = V2IntegrationAccount::where('user_id', $user->id)->where('id', $accountId)->firstOrFail();
+
+        $unipileId = $account->getUnipileAccountId();
+
+
+
+        if ($unipileId) {
+
+            $this->releaseRemoteUnipileAccount($unipileId);
+
+        }
+
+
+
+        $account->update([
+            'status' => 'disconnected',
+            'meta' => array_merge(is_array($account->meta) ? $account->meta : [], [
+                'live_status' => 'disconnected',
+                'disconnected_at' => now()->toIso8601String(),
+                'unipile_account_id' => null,
+            ]),
+            'provider_account_id' => 'disconnected',
+        ]);
+
+    }
+
+
+
+    public function releaseRemoteUnipileAccount(?string $unipileAccountId): void
+
+    {
+
+        $unipileAccountId = trim((string) $unipileAccountId);
+
+        if ($unipileAccountId === '') {
+
+            return;
+
+        }
+
+        try {
+
+            $this->providerManager->account(
+
+                $this->providerManager->defaultProvider()
+
+            )->disconnectAccount($unipileAccountId);
+
+            Log::info('[Connect] Released remote Unipile account', ['account_id' => $unipileAccountId]);
+
+        } catch (\Throwable $e) {
+
+            Log::info('[Connect] Remote Unipile account release skipped', [
+
+                'account_id' => $unipileAccountId,
+
+                'error' => $e->getMessage(),
+
+            ]);
+
+        }
+
+    }
+
+
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function appendHostedAuthReconnect(array $context, ?V2IntegrationAccount $existing): array
+    {
+        $unipileAccountId = trim((string) ($existing?->getUnipileAccountId() ?? ''));
+        if ($unipileAccountId === '') {
+            $context['type'] = 'create';
+
+            return $context;
+        }
+
+        try {
+            $this->providerManager->account(
+                $this->providerManager->defaultProvider()
+            )->getAccount($unipileAccountId);
+        } catch (\Throwable $e) {
+            Log::info('[Connect] Hosted auth using create flow — remote account missing', [
+                'channel' => 'linkedin',
+                'account_id' => $unipileAccountId,
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($existing !== null) {
+                $this->clearStaleLocalUnipileAccount($existing, $unipileAccountId);
+            }
+
+            $context['type'] = 'create';
+
+            return $context;
+        }
+
+        $context['type'] = 'reconnect';
+        $context['reconnect_account'] = $unipileAccountId;
+
+        return $context;
+    }
+
+    private function clearStaleLocalUnipileAccount(V2IntegrationAccount $account, string $staleId): void
+    {
+        $meta = is_array($account->meta) ? $account->meta : [];
+        unset($meta['unipile_account_id']);
+
+        $account->update([
+            'status' => 'disconnected',
+            'meta' => array_merge($meta, [
+                'live_status' => 'disconnected',
+                'disconnect_reason' => 'Remote Unipile account no longer exists',
+                'cleared_stale_unipile_id' => $staleId,
+                'cleared_at' => now()->toIso8601String(),
+            ]),
+        ]);
+    }
+
+
+
+    /**
+     * @return array<string, string>
+     */
+    private function cookieConnectOptions(?string $country = null): array
+    {
+        $country = strtoupper(trim((string) ($country ?? config('services.unipile.default_country', 'US'))));
+
+        if ($country === '' || strlen($country) !== 2) {
+            $country = 'US';
+        }
+
+        return ['country' => $country];
+    }
+
+}
+
+

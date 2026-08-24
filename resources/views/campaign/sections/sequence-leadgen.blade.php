@@ -328,12 +328,25 @@ let dbSequenceNode = @json($dbSequenceNode);
 let dbSequenceLink = @json($dbSequenceLink);
 let nodeDataModel, linkDataModel;
 
+function stripRetiredCallNodes(nodes, links) {
+    const list = Array.isArray(nodes) ? nodes : [];
+    const callKeys = new Set(list.filter((n) => n && n.value === 'call').map((n) => n.key));
+    if (!callKeys.size) {
+        return { nodes: list, links: Array.isArray(links) ? links : [] };
+    }
+    return {
+        nodes: list.filter((n) => n.value !== 'call'),
+        links: (Array.isArray(links) ? links : []).filter((l) => !callKeys.has(l.from) && !callKeys.has(l.to)),
+    };
+}
+
 {{-- Commented out - Book a call will be built as a standalone feature --}}
 {{-- const callMessage = "Hi @firstName, I'd like to schedule a call to discuss how we can help your business grow. Are you available for a brief conversation this week? I can share some insights about lead generation and business development that might be valuable for @company." --}}
 
 if(dbSequenceType === 'lead_gen' && dbSequenceNode.length > 0 && dbSequenceLink.length > 0){
-    nodeDataModel = dbSequenceNode
-    linkDataModel = dbSequenceLink
+    const cleaned = stripRetiredCallNodes(dbSequenceNode, dbSequenceLink);
+    nodeDataModel = cleaned.nodes
+    linkDataModel = cleaned.links
 }else {
     nodeDataModel = [
         {key: 0, icon: "\uf007", label: "Send an invite",   type: 'action', value: 'send-invites',  color: "#5A68F7", stroke: "white",  loc: "0 0", hasInviteNote: true, message: "Hey @firstName,\ni will like to join your network.", inviteStatus: '', runday: 0, runStatus: false},

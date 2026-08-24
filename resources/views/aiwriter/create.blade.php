@@ -58,8 +58,8 @@
     </div>
 </div>
 <div class="md:flex gap-6 mb-8">
-    <div class="w-full p-4 bg-white rounded-lg shadow-sm">
-        <div class="mt-4 w-full">
+    <div class="w-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div class="w-full">
             <div class="p-4 mb-4 mt-4 text-sm text-red-800 rounded-lg 
             bg-red-100 hidden"
             id="notification" role="alert">
@@ -174,31 +174,25 @@
                     value="{{old('idea')}}"
                     ></textarea>
                 </label>
-                <label class="block mt-4 text-sm">
-                    <span class="text-gray-700">Content</span>
-                    <textarea
-                    class="block w-full mt-1 text-sm form-textarea 
-                    focus:border-[#0077b5] focus:outline-none rounded-md
-                    focus:shadow-outline-[#0077b5]"
-                    rows="10"
-                    id="content"
-                    name="content"
-                    value="{{old('content')}}"
-                    ></textarea>
-                </label>
-                <label class="mt-4 text-sm flex gap-4 justify-end ">
-                    <span class="text-gray-700 mt-2">Word count</span>
-                    <input class="text-sm w-[5rem]
-                    form-input 
-                    focus:border-[#0077b5] focus:outline-none rounded-md border-gray-200
-                    focus:shadow-outline-[#0077b5]"
-                    type="number" id="words" name="words" value="{{old('words')}}" readonly>
-                </label>
-                <div class="bg-gray-50 px-4 py-3 mt-4 sm:flex sm:flex-row-reverse sm:px-6">
+                <div class="block mt-4 text-sm">
+                    <div class="mb-1 flex items-center justify-between">
+                        <span class="font-medium text-gray-700">Content</span>
+                        <span class="text-xs text-gray-500"><span id="contentWordCount">0</span> words</span>
+                    </div>
+                    <x-simple-text-editor
+                        id="content"
+                        name="content"
+                        :value="old('content', '')"
+                        :rows="12"
+                        min-height="min-h-[280px]"
+                        placeholder="Generated content appears here with line breaks. Edit, then copy or save."
+                        :required="true"
+                    />
+                </div>
+                <input type="hidden" id="words" name="words" value="{{ old('words', 0) }}">
+                <div class="mt-5 flex flex-wrap justify-end gap-3">
                     <button type="button" 
-                    class="inline-flex w-full justify-center rounded-md 
-                    px-3 py-2 text-sm font-semibold text-white 
-                    shadow-sm sm:ml-3 sm:w-auto transition-all"
+                    class="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all"
                     style="background: linear-gradient(135deg, #0077b5 0%, #005885 100%);" onmouseover="this.style.background='linear-gradient(135deg, #005885 0%, #004d6f 100%)'; this.style.boxShadow='0 4px 12px rgba(0, 119, 181, 0.3)';" onmouseout="this.style.background='linear-gradient(135deg, #0077b5 0%, #005885 100%)'; this.style.boxShadow='none';"
                     id="generate">
                         <span>Generate</span>
@@ -210,10 +204,7 @@
                         </span>
                     </button>
                     <button type="submit" 
-                    class="mt-3 inline-flex w-full justify-center rounded-md 
-                    bg-white px-3 py-2 text-sm font-semibold text-gray-900 
-                    shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 
-                    sm:mt-0 sm:w-auto"
+                    class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm hover:bg-gray-50"
                     id="save">
                         Save
                     </button>
@@ -223,13 +214,15 @@
     </div>
 </div>
 <script>
-$('#content').change(function() {
-    if($(this).val())
-        $(this).attr('disabled',false)
+function syncContentWordCount() {
+    const count = window.SimpleTextEditor
+        ? window.SimpleTextEditor.getWordCount('content')
+        : ($('#content').val().trim() ? $('#content').val().trim().split(/\s+/).length : 0);
+    $('#words').val(count);
+    $('#contentWordCount').text(count);
+}
 
-    let content = $(this).val().split(' ')
-    $('#words').val(content.length)
-})
+$('#content').on('input simple-text-editor:input', syncContentWordCount);
 
 $('#cold-mail, #cold-mail-card').click(function() {
     $('#write').show()
@@ -307,9 +300,13 @@ $('#generate').click(function() {
         success: function(res) {
             $('#generate').attr('disabled',false)
             $('#save').attr('disabled',false)
-            $('#content').val(res.content)
+            if (window.SimpleTextEditor) {
+                window.SimpleTextEditor.setValue('content', res.content || '');
+            } else {
+                $('#content').val(res.content)
+            }
             $('#words').val(res.words)
-            $('#content').attr('disabled',false)
+            syncContentWordCount()
             $('.spinner').hide()
         },
         error: function(err, status, error) {
@@ -400,6 +397,10 @@ const displayError = message => {
 // Initialize first card as selected on page load
 $(document).ready(function() {
     $('#cold-mail-card').removeClass('border-gray-200').addClass('border-[#0077b5] bg-blue-50')
+    if (window.SimpleTextEditor) {
+        window.SimpleTextEditor.init();
+    }
+    syncContentWordCount()
 })
 </script>
 @endsection

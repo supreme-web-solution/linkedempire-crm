@@ -18,7 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'ipn/*',
             'comment/campaign-activities/generate',
-            'api/*'
+            'api/*',
+            'unipile/callback',
         ]);
         
         // Add CORS middleware to API routes
@@ -28,6 +29,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'v2.extension.token' => \App\Http\Middleware\EnsureV2ExtensionToken::class,
+            'v2.idempotency' => \App\Http\Middleware\EnsureIdempotencyKey::class,
+            'v2.tenant' => \App\Http\Middleware\EnsureV2TenantContext::class,
+            'v2.capability' => \App\Http\Middleware\EnsureV2Capability::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
